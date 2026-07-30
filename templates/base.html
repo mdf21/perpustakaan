@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Aplikasi Perpustakaan SMA{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="d-flex" id="wrapper">
+        <div id="sidebar-wrapper">
+            <div class="sidebar-heading">
+                <i class="bi bi-book-half me-2"></i>
+                <span>Perpustakaan</span>
+            </div>
+            <div class="list-group list-group-flush">
+                <a href="/" class="list-group-item list-group-item-action {% if request.endpoint == 'index' %}active{% endif %}">
+                    <i class="bi bi-speedometer2 me-2"></i> Dashboard
+                </a>
+                <a href="/buku" class="list-group-item list-group-item-action {% if request.endpoint == 'buku_page' %}active{% endif %}">
+                    <i class="bi bi-book me-2"></i> Data Buku
+                </a>
+                <a href="/anggota" class="list-group-item list-group-item-action {% if request.endpoint == 'anggota_page' %}active{% endif %}">
+                    <i class="bi bi-people me-2"></i> Data Anggota
+                </a>
+                <a href="/transaksi" class="list-group-item list-group-item-action {% if request.endpoint == 'transaksi_page' %}active{% endif %}">
+                    <i class="bi bi-arrow-left-right me-2"></i> Peminjaman
+                </a>
+                <a href="/laporan" class="list-group-item list-group-item-action {% if request.endpoint == 'laporan_page' %}active{% endif %}">
+                    <i class="bi bi-graph-up me-2"></i> Laporan
+                </a>
+            </div>
+        </div>
+        <div id="page-content-wrapper">
+            <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom">
+                <div class="container-fluid">
+                    <button class="btn btn-outline-primary" id="sidebarToggle">
+                        <i class="bi bi-list"></i>
+                    </button>
+                    <div class="ms-auto d-flex align-items-center">
+                        <span class="navbar-text me-3">
+                            <i class="bi bi-calendar3 me-1"></i>
+                            {{ current_date }}
+                        </span>
+                        <span class="badge bg-primary">
+                            <i class="bi bi-person-circle me-1"></i> Admin
+                        </span>
+                    </div>
+                </div>
+            </nav>
+            <div class="container-fluid p-4">
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById("sidebarToggle").addEventListener("click", function(e) {
+            e.preventDefault();
+            document.getElementById("sidebar-wrapper").classList.toggle("toggled");
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

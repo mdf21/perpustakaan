@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Laporan - Perpustakaan{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-0">Laporan Perpustakaan</h2>
+        <p class="text-muted">Ringkasan dan laporan aktivitas perpustakaan</p>
+    </div>
+</div>
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Peminjaman Bulan Ini</h6>
+                <h3 class="text-primary" id="monthlyBorrowed">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Peminjaman Tahun Ini</h6>
+                <h3 class="text-success" id="yearlyBorrowed">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Total Pengembalian</h6>
+                <h3 class="text-info" id="totalReturned">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Total Buku</h6>
+                <h3 class="text-warning" id="totalBuku">0</h3>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0">
+                <h5 class="mb-0"><i class="bi bi-star me-2"></i>Buku Populer</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead><tr><th>Judul</th><th>Dipinjam</th></tr></thead>
+                        <tbody id="popularBooks"><tr><td colspan="2" class="text-center text-muted">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0">
+                <h5 class="mb-0"><i class="bi bi-person-check me-2"></i>Anggota Aktif</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead><tr><th>Nama</th><th>Total Pinjam</th></tr></thead>
+                        <tbody id="topMembers"><tr><td colspan="2" class="text-center text-muted">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0">
+                <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Koleksi per Kategori</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead><tr><th>Kategori</th><th>Jumlah</th></tr></thead>
+                        <tbody id="categoryStats"><tr><td colspan="2" class="text-center text-muted">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0">
+                <h5 class="mb-0"><i class="bi bi-calendar-check me-2"></i>Laporan Transaksi</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-5">
+                        <input type="date" class="form-control" id="startDate">
+                    </div>
+                    <div class="col-sm-5">
+                        <input type="date" class="form-control" id="endDate">
+                    </div>
+                    <div class="col-sm-2">
+                        <button class="btn btn-primary w-100" onclick="loadLaporanTransaksi()">Tampilkan</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead><tr><th>Tgl Pinjam</th><th>Anggota</th><th>Buku</th><th>Status</th><th>Denda</th></tr></thead>
+                        <tbody id="laporanTable"><tr><td colspan="5" class="text-center text-muted">Pilih rentang tanggal</td></tr></tbody>
+                    </table>
+                </div>
+                <button class="btn btn-outline-secondary btn-sm mt-2" onclick="window.print()">
+                    <i class="bi bi-printer me-1"></i>Cetak Laporan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadRingkasan();
+});
+
+function loadRingkasan() {
+    fetch('/api/laporan/ringkasan')
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('monthlyBorrowed').textContent = data.monthly_borrowed;
+            document.getElementById('yearlyBorrowed').textContent = data.yearly_borrowed;
+            document.getElementById('totalReturned').textContent = data.total_returned;
+            document.getElementById('totalBuku').textContent = data.total_buku;
+
+            const popular = document.getElementById('popularBooks');
+            popular.innerHTML = '';
+            if (data.popular_books.length === 0) {
+                popular.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Belum ada data</td></tr>';
+            } else {
+                data.popular_books.forEach(b => {
+                    popular.innerHTML += `<tr><td>${escapeHtml(b.judul)}</td><td><span class="badge bg-primary">${b.total}x</span></td></tr>`;
+                });
+            }
+
+            const members = document.getElementById('topMembers');
+            members.innerHTML = '';
+            if (data.top_members.length === 0) {
+                members.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Belum ada data</td></tr>';
+            } else {
+                data.top_members.forEach(m => {
+                    members.innerHTML += `<tr><td>${escapeHtml(m.nama)}</td><td><span class="badge bg-success">${m.total}x</span></td></tr>`;
+                });
+            }
+
+            const cat = document.getElementById('categoryStats');
+            cat.innerHTML = '';
+            if (data.category_stats.length === 0) {
+                cat.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Belum ada data</td></tr>';
+            } else {
+                data.category_stats.forEach(c => {
+                    cat.innerHTML += `<tr><td>${escapeHtml(c.kategori)}</td><td>${c.total} buku</td></tr>`;
+                });
+            }
+        });
+}
+
+function loadLaporanTransaksi() {
+    const start = document.getElementById('startDate').value;
+    const end = document.getElementById('endDate').value;
+    let url = '/api/laporan/transaksi';
+    if (start) url += `?start=${start}`;
+    if (end) url += `${start ? '&' : '?'}end=${end}`;
+
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('laporanTable');
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Tidak ada data</td></tr>';
+            } else {
+                data.forEach(t => {
+                    const statusBadge = t.status === 'Dipinjam' ? 'bg-warning' : t.status === 'Dikembalikan' ? 'bg-success' : 'bg-danger';
+                    tbody.innerHTML += `<tr>
+                        <td>${t.tanggal_pinjam}</td>
+                        <td>${escapeHtml(t.nama_anggota)}<br><small class="text-muted">${escapeHtml(t.nis)} | ${escapeHtml(t.kelas)}</small></td>
+                        <td>${escapeHtml(t.judul_buku)}</td>
+                        <td><span class="badge ${statusBadge}">${escapeHtml(t.status)}</span></td>
+                        <td>Rp ${t.denda.toLocaleString()}</td>
+                    </tr>`;
+                });
+            }
+        });
+}
+</script>
+{% endblock %}

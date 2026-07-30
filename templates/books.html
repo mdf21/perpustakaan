@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Data Buku - Perpustakaan{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-0">Data Buku</h2>
+        <p class="text-muted">Kelola data koleksi buku perpustakaan</p>
+    </div>
+</div>
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex gap-2 flex-wrap">
+            <input type="text" class="form-control" id="searchBuku" placeholder="Cari judul, penulis, kode buku...">
+            <select class="form-select" id="filterKategori">
+                <option value="">Semua Kategori</option>
+            </select>
+        </div>
+        <button class="btn btn-primary" onclick="openModal()">
+            <i class="bi bi-plus-circle me-1"></i> Tambah Buku
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Kode</th>
+                        <th>Judul</th>
+                        <th>Penulis</th>
+                        <th>Kategori</th>
+                        <th>Stok</th>
+                        <th>Lokasi</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="bukuTable">
+                    <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <nav>
+            <ul class="pagination justify-content-center" id="pagination"></ul>
+        </nav>
+    </div>
+</div>
+
+<div class="modal fade" id="bukuModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Tambah Buku</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="bukuForm">
+                    <input type="hidden" id="bukuId">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Kode Buku</label>
+                            <input type="text" class="form-control" id="kodeBuku" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Judul Buku</label>
+                            <input type="text" class="form-control" id="judul" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Penulis</label>
+                            <input type="text" class="form-control" id="penulis" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Penerbit</label>
+                            <input type="text" class="form-control" id="penerbit">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Tahun Terbit</label>
+                            <input type="number" class="form-control" id="tahunTerbit">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Kategori</label>
+                            <input type="text" class="form-control" id="kategori" list="kategoriList">
+                            <datalist id="kategoriList"></datalist>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">ISBN</label>
+                            <input type="text" class="form-control" id="isbn">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Jumlah Halaman</label>
+                            <input type="number" class="form-control" id="jumlahHalaman">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Stok</label>
+                            <input type="number" class="form-control" id="stok" value="1" min="0" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Lokasi Rak</label>
+                            <input type="text" class="form-control" id="lokasiRak">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deskripsi</label>
+                        <textarea class="form-control" id="deskripsi" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" onclick="saveBuku()">Simpan</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Konfirmasi Hapus</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Apakah Anda yakin ingin menghapus buku ini?</p>
+                <input type="hidden" id="deleteId">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-danger" onclick="deleteBuku()">Hapus</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+let currentPage = 1;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadBuku();
+    loadKategori();
+    document.getElementById('searchBuku').addEventListener('input', debounce(function() {
+        currentPage = 1;
+        loadBuku();
+    }, 300));
+    document.getElementById('filterKategori').addEventListener('change', function() {
+        currentPage = 1;
+        loadBuku();
+    });
+});
+
+function loadBuku() {
+    const search = document.getElementById('searchBuku').value;
+    const kategori = document.getElementById('filterKategori').value;
+    let url = `/api/buku?page=${currentPage}&search=${encodeURIComponent(search)}`;
+    if (kategori) url += `&kategori=${encodeURIComponent(kategori)}`;
+
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('bukuTable');
+            tbody.innerHTML = '';
+            if (data.books.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Tidak ada data buku</td></tr>';
+            } else {
+                data.books.forEach(b => {
+                    tbody.innerHTML += `<tr>
+                        <td><strong>${escapeHtml(b.kode_buku)}</strong></td>
+                        <td>${escapeHtml(b.judul)}</td>
+                        <td>${escapeHtml(b.penulis)}</td>
+                        <td><span class="badge bg-secondary">${escapeHtml(b.kategori || '-')}</span></td>
+                        <td><span class="badge ${b.stok > 0 ? 'bg-success' : 'bg-danger'}">${b.stok}</span></td>
+                        <td>${escapeHtml(b.lokasi_rak || '-')}</td>
+                        <td>
+                            <button class="btn btn-sm btn-warning me-1" onclick="editBuku(${b.id})"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-danger" onclick="confirmDelete(${b.id})"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>`;
+                });
+            }
+            renderPagination(data.page, data.pages, data.total);
+        });
+}
+
+function renderPagination(page, pages, total) {
+    const nav = document.getElementById('pagination');
+    nav.innerHTML = '';
+    if (pages <= 1) return;
+    nav.innerHTML += `<li class="page-item ${page === 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="changePage(${page-1}); return false;">Previous</a></li>`;
+    for (let i = 1; i <= pages; i++) {
+        nav.innerHTML += `<li class="page-item ${i === page ? 'active' : ''}"><a class="page-link" href="#" onclick="changePage(${i}); return false;">${i}</a></li>`;
+    }
+    nav.innerHTML += `<li class="page-item ${page === pages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="changePage(${page+1}); return false;">Next</a></li>`;
+}
+
+function changePage(page) {
+    currentPage = page;
+    loadBuku();
+}
+
+function openModal() {
+    document.getElementById('bukuForm').reset();
+    document.getElementById('bukuId').value = '';
+    document.getElementById('modalTitle').textContent = 'Tambah Buku';
+    new bootstrap.Modal(document.getElementById('bukuModal')).show();
+}
+
+function editBuku(id) {
+    const modalEl = document.getElementById('bukuModal');
+    const modal = new bootstrap.Modal(modalEl);
+    fetch(`/api/buku?per_page=100`)
+        .then(res => res.json())
+        .then(data => {
+            const b = data.books.find(x => x.id === id);
+            if (!b) return;
+            document.getElementById('bukuId').value = b.id;
+            document.getElementById('kodeBuku').value = b.kode_buku;
+            document.getElementById('judul').value = b.judul;
+            document.getElementById('penulis').value = b.penulis;
+            document.getElementById('penerbit').value = b.penerbit || '';
+            document.getElementById('tahunTerbit').value = b.tahun_terbit || '';
+            document.getElementById('kategori').value = b.kategori || '';
+            document.getElementById('isbn').value = b.isbn || '';
+            document.getElementById('jumlahHalaman').value = b.jumlah_halaman || '';
+            document.getElementById('stok').value = b.stok;
+            document.getElementById('lokasiRak').value = b.lokasi_rak || '';
+            document.getElementById('deskripsi').value = b.deskripsi || '';
+            document.getElementById('modalTitle').textContent = 'Edit Buku';
+            modal.show();
+        });
+}
+
+function saveBuku() {
+    const id = document.getElementById('bukuId').value;
+    const data = {
+        kode_buku: document.getElementById('kodeBuku').value,
+        judul: document.getElementById('judul').value,
+        penulis: document.getElementById('penulis').value,
+        penerbit: document.getElementById('penerbit').value,
+        tahun_terbit: document.getElementById('tahunTerbit').value ? parseInt(document.getElementById('tahunTerbit').value) : null,
+        kategori: document.getElementById('kategori').value,
+        isbn: document.getElementById('isbn').value,
+        jumlah_halaman: document.getElementById('jumlahHalaman').value ? parseInt(document.getElementById('jumlahHalaman').value) : null,
+        stok: parseInt(document.getElementById('stok').value) || 0,
+        lokasi_rak: document.getElementById('lokasiRak').value,
+        deskripsi: document.getElementById('deskripsi').value
+    };
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `/api/buku/${id}` : '/api/buku';
+    fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(result => {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('bukuModal')).hide();
+            loadBuku();
+            loadKategori();
+            alert(result.message);
+        } else {
+            alert(result.message);
+        }
+    });
+}
+
+function confirmDelete(id) {
+    document.getElementById('deleteId').value = id;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+function deleteBuku() {
+    const id = document.getElementById('deleteId').value;
+    fetch(`/api/buku/${id}`, {method: 'DELETE'})
+        .then(res => res.json())
+        .then(result => {
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+                loadBuku();
+                loadKategori();
+                alert(result.message);
+            } else {
+                alert(result.message);
+            }
+        });
+}
+
+function loadKategori() {
+    fetch('/api/kategori')
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('filterKategori');
+            const datalist = document.getElementById('kategoriList');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Semua Kategori</option>';
+            data.forEach(c => {
+                select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+                datalist.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+            });
+            select.value = currentVal;
+        });
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => { clearTimeout(timeout); func(...args); };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+</script>
+{% endblock %}

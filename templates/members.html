@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}Data Anggota - Perpustakaan{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-0">Data Anggota</h2>
+        <p class="text-muted">Kelola data anggota perpustakaan siswa/siswi</p>
+    </div>
+</div>
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex gap-2 flex-wrap">
+            <input type="text" class="form-control" id="searchAnggota" placeholder="Cari nama, NIS, kelas...">
+            <select class="form-select" id="filterKelas">
+                <option value="">Semua Kelas</option>
+            </select>
+        </div>
+        <button class="btn btn-primary" onclick="openModal()">
+            <i class="bi bi-plus-circle me-1"></i> Tambah Anggota
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>NIS</th>
+                        <th>Nama</th>
+                        <th>Kelas</th>
+                        <th>Jurusan</th>
+                        <th>JK</th>
+                        <th>Telepon</th>
+                        <th>Status</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="anggotaTable">
+                    <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <nav>
+            <ul class="pagination justify-content-center" id="pagination"></ul>
+        </nav>
+    </div>
+</div>
+
+<div class="modal fade" id="anggotaModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Tambah Anggota</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="anggotaForm">
+                    <input type="hidden" id="anggotaId">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">NIS</label>
+                            <input type="text" class="form-control" id="nis" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nama Lengkap</label>
+                            <input type="text" class="form-control" id="nama" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Kelas</label>
+                            <input type="text" class="form-control" id="kelas" required list="kelasList">
+                            <datalist id="kelasList"></datalist>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Jurusan</label>
+                            <select class="form-select" id="jurusan">
+                                <option value="">Pilih Jurusan</option>
+                                <option value="IPA">IPA</option>
+                                <option value="IPS">IPS</option>
+                                <option value="Bahasa">Bahasa</option>
+                                <option value="TKJ">TKJ</option>
+                                <option value="RPL">RPL</option>
+                                <option value="AKL">AKL</option>
+                                <option value="OTKP">OTKP</option>
+                                <option value="Lainnya">Lainnya</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Jenis Kelamin</label>
+                            <select class="form-select" id="jenisKelamin">
+                                <option value="">Pilih</option>
+                                <option value="L">Laki-laki</option>
+                                <option value="P">Perempuan</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">No. Telepon</label>
+                            <input type="text" class="form-control" id="noTelepon">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" id="status">
+                                <option value="Aktif">Aktif</option>
+                                <option value="Nonaktif">Nonaktif</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Alamat</label>
+                        <textarea class="form-control" id="alamat" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" onclick="saveAnggota()">Simpan</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Konfirmasi Hapus</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Apakah Anda yakin ingin menghapus anggota ini?</p>
+                <input type="hidden" id="deleteId">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-danger" onclick="deleteAnggota()">Hapus</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+let currentPage = 1;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnggota();
+    loadKelas();
+    document.getElementById('searchAnggota').addEventListener('input', debounce(function() {
+        currentPage = 1;
+        loadAnggota();
+    }, 300));
+    document.getElementById('filterKelas').addEventListener('change', function() {
+        currentPage = 1;
+        loadAnggota();
+    });
+});
+
+function loadAnggota() {
+    const search = document.getElementById('searchAnggota').value;
+    const kelas = document.getElementById('filterKelas').value;
+    let url = `/api/anggota?page=${currentPage}&search=${encodeURIComponent(search)}`;
+    if (kelas) url += `&kelas=${encodeURIComponent(kelas)}`;
+
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('anggotaTable');
+            tbody.innerHTML = '';
+            if (data.anggota.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Tidak ada data anggota</td></tr>';
+            } else {
+                data.anggota.forEach(a => {
+                    const statusBadge = a.status === 'Aktif' ? 'bg-success' : 'bg-danger';
+                    tbody.innerHTML += `<tr>
+                        <td><strong>${escapeHtml(a.nis)}</strong></td>
+                        <td>${escapeHtml(a.nama)}</td>
+                        <td><strong>${escapeHtml(a.kelas)}</strong></td>
+                        <td>${escapeHtml(a.jurusan || '-')}</td>
+                        <td>${escapeHtml(a.jenis_kelamin || '-')}</td>
+                        <td>${escapeHtml(a.no_telepon || '-')}</td>
+                        <td><span class="badge ${statusBadge}">${escapeHtml(a.status)}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-warning me-1" onclick="editAnggota(${a.id})"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-danger" onclick="confirmDelete(${a.id})"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>`;
+                });
+            }
+            renderPagination(data.page, data.pages, data.total);
+        });
+}
+
+function renderPagination(page, pages, total) {
+    const nav = document.getElementById('pagination');
+    nav.innerHTML = '';
+    if (pages <= 1) return;
+    nav.innerHTML += `<li class="page-item ${page === 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="changePage(${page-1}); return false;">Previous</a></li>`;
+    for (let i = 1; i <= pages; i++) {
+        nav.innerHTML += `<li class="page-item ${i === page ? 'active' : ''}"><a class="page-link" href="#" onclick="changePage(${i}); return false;">${i}</a></li>`;
+    }
+    nav.innerHTML += `<li class="page-item ${page === pages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="changePage(${page+1}); return false;">Next</a></li>`;
+}
+
+function changePage(page) {
+    currentPage = page;
+    loadAnggota();
+}
+
+function openModal() {
+    document.getElementById('anggotaForm').reset();
+    document.getElementById('anggotaId').value = '';
+    document.getElementById('modalTitle').textContent = 'Tambah Anggota';
+    new bootstrap.Modal(document.getElementById('anggotaModal')).show();
+}
+
+function editAnggota(id) {
+    fetch(`/api/anggota?per_page=100`)
+        .then(res => res.json())
+        .then(data => {
+            const a = data.anggota.find(x => x.id === id);
+            if (!a) return;
+            document.getElementById('anggotaId').value = a.id;
+            document.getElementById('nis').value = a.nis;
+            document.getElementById('nama').value = a.nama;
+            document.getElementById('kelas').value = a.kelas;
+            document.getElementById('jurusan').value = a.jurusan || '';
+            document.getElementById('jenisKelamin').value = a.jenis_kelamin || '';
+            document.getElementById('noTelepon').value = a.no_telepon || '';
+            document.getElementById('alamat').value = a.alamat || '';
+            document.getElementById('status').value = a.status;
+            document.getElementById('modalTitle').textContent = 'Edit Anggota';
+            new bootstrap.Modal(document.getElementById('anggotaModal')).show();
+        });
+}
+
+function saveAnggota() {
+    const id = document.getElementById('anggotaId').value;
+    const data = {
+        nis: document.getElementById('nis').value,
+        nama: document.getElementById('nama').value,
+        kelas: document.getElementById('kelas').value,
+        jurusan: document.getElementById('jurusan').value,
+        jenis_kelamin: document.getElementById('jenisKelamin').value,
+        no_telepon: document.getElementById('noTelepon').value,
+        alamat: document.getElementById('alamat').value,
+        status: document.getElementById('status').value
+    };
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `/api/anggota/${id}` : '/api/anggota';
+    fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(result => {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('anggotaModal')).hide();
+            loadAnggota();
+            loadKelas();
+            alert(result.message);
+        } else {
+            alert(result.message);
+        }
+    });
+}
+
+function confirmDelete(id) {
+    document.getElementById('deleteId').value = id;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+function deleteAnggota() {
+    const id = document.getElementById('deleteId').value;
+    fetch(`/api/anggota/${id}`, {method: 'DELETE'})
+        .then(res => res.json())
+        .then(result => {
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+                loadAnggota();
+                loadKelas();
+                alert(result.message);
+            } else {
+                alert(result.message);
+            }
+        });
+}
+
+function loadKelas() {
+    fetch('/api/kelas')
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('filterKelas');
+            const datalist = document.getElementById('kelasList');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Semua Kelas</option>';
+            data.forEach(c => {
+                select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+                datalist.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+            });
+            select.value = currentVal;
+        });
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => { clearTimeout(timeout); func(...args); };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+</script>
+{% endblock %}

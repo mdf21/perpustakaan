@@ -1,0 +1,97 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+#sidebar-wrapper {
+    min-height: 100vh;
+    width: 250px;
+    background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+    transition: margin .25s ease-out;
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1000;
+}
+
+#sidebar-wrapper .sidebar-heading {
+    padding: 1.5rem 1rem;
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+#sidebar-wrapper .list-group-item {
+    background-color: transparent;
+    color: rgba(255,255,255,0.85);
+    border: none;
+    padding: 0.85rem 1.2rem;
+    font-size: 0.95rem;
+}
+
+#sidebar-wrapper .list-group-item:hover {
+    background-color: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+#sidebar-wrapper .list-group-item.active {
+    background-color: rgba(255,255,255,0.2);
+    color: #fff;
+    font-weight: 600;
+}
+
+#page-content-wrapper {
+    margin-left: 250px;
+    min-height: 100vh;
+}
+
+@media (max-width: 768px) {
+    #sidebar-wrapper {
+        margin-left: -250px;
+    }
+    #sidebar-wrapper.toggled {
+        margin-left: 0;
+    }
+    #page-content-wrapper {
+        margin-left: 0;
+    }
+}
+
+.stat-card {
+    transition: transform .2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-3px);
+}
+
+.icon-box {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.card {
+    border-radius: 0.5rem;
+}
+
+.table th {
+    background-color: #f8f9fa;
+}
+
+.badge {
+    font-size: 0.8rem;
+}
+
+@media print {
+    #sidebar-wrapper, .navbar, .btn {
+        display: none !important;
+    }
+    #page-content-wrapper {
+        margin-left: 0 !important;
+    }
+}
