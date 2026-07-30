@@ -3,13 +3,13 @@
 {% block content %}
 <div class="row mb-4">
     <div class="col-12">
-        <h2 class="mb-0">Peminjaman & Pengembalian</h2>
-        <p class="text-muted">Kelola transaksi peminjaman dan pengembalian buku</p>
+        <h2 class="mb-1 fw-bold">Peminjaman & Pengembalian</h2>
+        <p class="text-muted mb-0">Kelola transaksi peminjaman dan pengembalian buku</p>
     </div>
 </div>
 <div class="row mb-3">
     <div class="col-12">
-        <div class="d-flex gap-2 flex-wrap">
+        <div class="d-flex flex-wrap gap-2">
             <button class="btn btn-primary" onclick="openPinjamModal()">
                 <i class="bi bi-plus-circle me-1"></i> Pinjam Buku
             </button>
@@ -23,10 +23,10 @@
         </div>
     </div>
 </div>
-<div class="card border-0 shadow-sm">
-    <div class="card-body">
+<div class="card border-0">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover mb-0">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -38,7 +38,7 @@
                         <th>Tgl Kembali</th>
                         <th>Status</th>
                         <th>Denda</th>
-                        <th>Aksi</th>
+                        <th class="no-print">Aksi</th>
                     </tr>
                 </thead>
                 <tbody id="transaksiTable">
@@ -46,8 +46,10 @@
                 </tbody>
             </table>
         </div>
+    </div>
+    <div class="card-footer bg-white border-0">
         <nav>
-            <ul class="pagination justify-content-center" id="pagination"></ul>
+            <ul class="pagination justify-content-center mb-0" id="pagination"></ul>
         </nav>
     </div>
 </div>

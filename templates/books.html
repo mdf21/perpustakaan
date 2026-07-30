@@ -3,25 +3,27 @@
 {% block content %}
 <div class="row mb-4">
     <div class="col-12">
-        <h2 class="mb-0">Data Buku</h2>
-        <p class="text-muted">Kelola data koleksi buku perpustakaan</p>
+        <h2 class="mb-1 fw-bold">Data Buku</h2>
+        <p class="text-muted mb-0">Kelola data koleksi buku perpustakaan</p>
     </div>
 </div>
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex gap-2 flex-wrap">
-            <input type="text" class="form-control" id="searchBuku" placeholder="Cari judul, penulis, kode buku...">
-            <select class="form-select" id="filterKategori">
-                <option value="">Semua Kategori</option>
-            </select>
+<div class="card border-0">
+    <div class="card-header bg-white border-0">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <div class="d-flex gap-2 flex-wrap">
+                <input type="text" class="form-control" id="searchBuku" placeholder="Cari judul, penulis, kode buku...">
+                <select class="form-select" id="filterKategori">
+                    <option value="">Semua Kategori</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="openModal()">
+                <i class="bi bi-plus-circle me-1"></i> Tambah Buku
+            </button>
         </div>
-        <button class="btn btn-primary" onclick="openModal()">
-            <i class="bi bi-plus-circle me-1"></i> Tambah Buku
-        </button>
     </div>
-    <div class="card-body">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover mb-0">
                 <thead>
                     <tr>
                         <th>Kode</th>
@@ -30,7 +32,7 @@
                         <th>Kategori</th>
                         <th>Stok</th>
                         <th>Lokasi</th>
-                        <th>Aksi</th>
+                        <th class="no-print">Aksi</th>
                     </tr>
                 </thead>
                 <tbody id="bukuTable">
@@ -38,8 +40,10 @@
                 </tbody>
             </table>
         </div>
+    </div>
+    <div class="card-footer bg-white border-0">
         <nav>
-            <ul class="pagination justify-content-center" id="pagination"></ul>
+            <ul class="pagination justify-content-center mb-0" id="pagination"></ul>
         </nav>
     </div>
 </div>
