@@ -5,6 +5,12 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import or_, and_, func
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import string
+import random
+import openpyxl
+import io
+from flask import send_file
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///perpustakaan.db')
@@ -13,6 +19,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True
 }
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'perpustakaan-secret-key-change-in-production')
+app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'covers')
 
 CORS(app, resources={r"/api/*": {"origins": os.getenv('CORS_ORIGINS', '*')}}, supports_credentials=True)
 
@@ -101,6 +108,7 @@ class Buku(db.Model):
     stok_tersedia = db.Column(db.Integer, default=1)
     rak_id = db.Column(db.Integer, db.ForeignKey('raks.id'))
     deskripsi = db.Column(db.Text)
+    cover_image = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -119,7 +127,8 @@ class Buku(db.Model):
             'rak_id': self.rak_id,
             'rak_nama': self.rak.nama_rak if self.rak else None,
             'kategori_ddc': self.rak.kategori_ddc if self.rak else None,
-            'deskripsi': self.deskripsi
+            'deskripsi': self.deskripsi,
+            'cover_image': self.cover_image
         }
 
 class Anggota(db.Model):
@@ -417,9 +426,18 @@ def get_buku():
 @app.route('/api/buku', methods=['POST'])
 @role_required('admin', 'petugas')
 def create_buku():
-    data = request.json
+    data = request.form
     if not data or not data.get('isbn') or not data.get('judul') or not data.get('pengarang'):
         return jsonify({'success': False, 'message': 'ISBN, judul, dan pengarang wajib diisi'}), 400
+    
+    cover_image_filename = None
+    if 'cover_image' in request.files:
+        file = request.files['cover_image']
+        if file and file.filename != '':
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            cover_image_filename = filename
+
     buku = Buku(
         isbn=data.get('isbn'),
         judul=data.get('judul'),
@@ -428,8 +446,9 @@ def create_buku():
         tahun_terbit=data.get('tahun_terbit'),
         stok_total=data.get('stok_total', 1),
         stok_tersedia=data.get('stok_tersedia', 1),
-        rak_id=data.get('rak_id'),
-        deskripsi=data.get('deskripsi')
+        rak_id=data.get('rak_id') if data.get('rak_id') else None,
+        deskripsi=data.get('deskripsi'),
+        cover_image=cover_image_filename
     )
     db.session.add(buku)
     db.session.commit()
@@ -439,9 +458,20 @@ def create_buku():
 @role_required('admin', 'petugas')
 def update_buku(id):
     b = Buku.query.get_or_404(id)
-    data = request.json
+    data = request.form
+    if not data:
+        data = request.json # fallback for json if no form data sent
+    
     if not data or not data.get('isbn') or not data.get('judul') or not data.get('pengarang'):
         return jsonify({'success': False, 'message': 'ISBN, judul, dan pengarang wajib diisi'}), 400
+    
+    if 'cover_image' in request.files:
+        file = request.files['cover_image']
+        if file and file.filename != '':
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            b.cover_image = filename
+
     b.isbn = data.get('isbn', b.isbn)
     b.judul = data.get('judul', b.judul)
     b.pengarang = data.get('pengarang', b.pengarang)
@@ -449,7 +479,8 @@ def update_buku(id):
     b.tahun_terbit = data.get('tahun_terbit', b.tahun_terbit)
     b.stok_total = data.get('stok_total', b.stok_total)
     b.stok_tersedia = data.get('stok_tersedia', b.stok_tersedia)
-    b.rak_id = data.get('rak_id', b.rak_id)
+    if data.get('rak_id'):
+        b.rak_id = data.get('rak_id')
     b.deskripsi = data.get('deskripsi', b.deskripsi)
     db.session.commit()
     return jsonify({'success': True, 'message': 'Buku berhasil diperbarui'})
@@ -882,24 +913,25 @@ def laporan_denda():
         'denda_list': result
     })
 
-# ===== WA GATEWAY INTEGRATION (Placeholder) =====
+# ===== WA GATEWAY INTEGRATION =====
+import requests
+
 def send_wa_notification(phone_number, message):
-    """
-    Placeholder for WhatsApp Gateway integration.
-    Replace with actual WA Gateway API (e.g., Fonnte, Wablas, etc.)
-    """
-    # TODO: Implement actual WA Gateway API call
-    # Example:
-    # import requests
-    # response = requests.post(
-    #     'https://api.fonnte.com/send',
-    #     headers={'Authorization': 'YOUR_TOKEN'},
-    #     data={'target': phone_number, 'message': message}
-    # )
-    # return response.json()
-    
-    print(f"[WA NOTIFICATION] To: {phone_number}, Message: {message}")
-    return {'success': True, 'message': 'Notification queued (simulated)'}
+    token = os.getenv('FONNTE_TOKEN')
+    if not token:
+        print(f"[WA NOTIFICATION SIMULATION] To: {phone_number}, Message: {message}")
+        return {'success': True, 'message': 'Notification queued (simulated, no token)'}
+
+    try:
+        response = requests.post(
+            'https://api.fonnte.com/send',
+            headers={'Authorization': token},
+            data={'target': phone_number, 'message': message}
+        )
+        return response.json()
+    except Exception as e:
+        print(f"Failed to send WA: {e}")
+        return {'success': False, 'message': str(e)}
 
 @app.route('/api/wa/notify-return-reminder', methods=['POST'])
 @role_required('admin', 'petugas')
@@ -926,6 +958,172 @@ def notify_return_reminder():
             })
     
     return jsonify({'success': True, 'notifications_sent': len(results), 'details': results})
+
+# ===== EXCEL EXPORT & IMPORT =====
+@app.route('/api/buku/export', methods=['GET'])
+@role_required('admin', 'petugas')
+def export_buku():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data Buku"
+    headers = ['ID', 'ISBN', 'Judul', 'Pengarang', 'Penerbit', 'Tahun Terbit', 'Stok Total', 'Stok Tersedia', 'Rak ID']
+    ws.append(headers)
+    for b in Buku.query.all():
+        ws.append([b.id, b.isbn, b.judul, b.pengarang, b.penerbit, b.tahun_terbit, b.stok_total, b.stok_tersedia, b.rak_id])
+    
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return send_file(out, download_name='data_buku.xlsx', as_attachment=True)
+
+@app.route('/api/buku/import', methods=['POST'])
+@role_required('admin', 'petugas')
+def import_buku():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file uploaded'}), 400
+    file = request.files['file']
+    if not file.filename.endswith('.xlsx'):
+        return jsonify({'success': False, 'message': 'Hanya file .xlsx yang didukung'}), 400
+    
+    wb = openpyxl.load_workbook(file)
+    ws = wb.active
+    count = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row[2] or not row[3]: # Judul & Pengarang wajib
+            continue
+        # Assuming format: ID, ISBN, Judul, Pengarang, Penerbit, Tahun, Stok Total, Stok Tersedia, Rak ID
+        b = Buku(
+            isbn=str(row[1]) if row[1] else None,
+            judul=str(row[2]),
+            pengarang=str(row[3]),
+            penerbit=str(row[4]) if len(row)>4 else None,
+            tahun_terbit=int(row[5]) if len(row)>5 and row[5] else None,
+            stok_total=int(row[6]) if len(row)>6 and row[6] else 1,
+            stok_tersedia=int(row[7]) if len(row)>7 and row[7] else 1,
+            rak_id=int(row[8]) if len(row)>8 and row[8] else None
+        )
+        db.session.add(b)
+        count += 1
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'{count} buku berhasil diimport'})
+
+@app.route('/api/anggota/export', methods=['GET'])
+@role_required('admin', 'petugas')
+def export_anggota():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data Anggota"
+    headers = ['ID', 'NIS', 'Nama', 'Kelas', 'Jurusan', 'Jenis Kelamin', 'No Telepon', 'Alamat', 'Status']
+    ws.append(headers)
+    for a in Anggota.query.all():
+        ws.append([a.id, a.nis, a.nama, a.kelas, a.jurusan, a.jenis_kelamin, a.no_telepon, a.alamat, a.status])
+    
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return send_file(out, download_name='data_anggota.xlsx', as_attachment=True)
+
+@app.route('/api/anggota/import', methods=['POST'])
+@role_required('admin', 'petugas')
+def import_anggota():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file uploaded'}), 400
+    file = request.files['file']
+    if not file.filename.endswith('.xlsx'):
+        return jsonify({'success': False, 'message': 'Hanya file .xlsx yang didukung'}), 400
+    
+    wb = openpyxl.load_workbook(file)
+    ws = wb.active
+    count = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row[1] or not row[2] or not row[3]: # NIS, Nama, Kelas wajib
+            continue
+        a = Anggota(
+            nis=str(row[1]),
+            nama=str(row[2]),
+            kelas=str(row[3]),
+            jurusan=str(row[4]) if len(row)>4 else None,
+            jenis_kelamin=str(row[5]) if len(row)>5 else None,
+            no_telepon=str(row[6]) if len(row)>6 else None,
+            alamat=str(row[7]) if len(row)>7 else None,
+            status=str(row[8]) if len(row)>8 and row[8] else 'Aktif'
+        )
+        db.session.add(a)
+        
+        # Auto-create user account
+        user = User(
+            username=str(row[1]),
+            nama=str(row[2]),
+            role='anggota',
+            status='aktif',
+            anggota_id=a.id
+        )
+        user.set_password(str(row[1]))
+        db.session.add(user)
+        count += 1
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'{count} anggota berhasil diimport'})
+
+# ===== BARCODE ENDPOINT =====
+import barcode
+from barcode.writer import ImageWriter
+
+@app.route('/api/barcode/<string:code>', methods=['GET'])
+def generate_barcode(code):
+    try:
+        # Use Code128 which supports alphanumeric
+        CODE = barcode.get_barcode_class('code128')
+        # generate barcode in memory
+        bc = CODE(code, writer=ImageWriter())
+        out = io.BytesIO()
+        bc.write(out)
+        out.seek(0)
+        return send_file(out, mimetype='image/png')
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+
+# ===== RECOMMENDATION ENDPOINT =====
+@app.route('/api/opac/rekomendasi', methods=['GET'])
+def get_rekomendasi():
+    # Mengambil buku yang paling banyak dipinjam atau buku terbaru
+    popular_books = db.session.query(Buku, func.count(Transaksi.id).label('total_pinjam'))\
+        .outerjoin(Transaksi)\
+        .group_by(Buku.id)\
+        .order_by(db.desc('total_pinjam'))\
+        .limit(6).all()
+        
+    result = []
+    for b, count in popular_books:
+        result.append(b.to_dict())
+    return jsonify({'books': result})
+
+# ===== LUPA PASSWORD ENDPOINT =====
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    data = request.json
+    nis = data.get('nis')
+    if not nis:
+        return jsonify({'success': False, 'message': 'NIS diperlukan'})
+        
+    anggota = Anggota.query.filter_by(nis=nis).first()
+    if not anggota or not anggota.no_telepon:
+        return jsonify({'success': False, 'message': 'Anggota tidak ditemukan atau nomor telepon tidak terdaftar'})
+        
+    user = User.query.filter_by(anggota_id=anggota.id).first()
+    if not user:
+        return jsonify({'success': False, 'message': 'Akun login tidak ditemukan'})
+        
+    # Generate new random password (6 digits)
+    import string
+    new_password = ''.join(random.choices(string.digits, k=6))
+    user.set_password(new_password)
+    db.session.commit()
+    
+    # Send WA
+    message = f"Halo {anggota.nama}, password baru Anda adalah: {new_password}\nSilakan login dan segera ganti password Anda demi keamanan."
+    send_wa_notification(anggota.no_telepon, message)
+    
+    return jsonify({'success': True, 'message': 'Password baru telah dikirim ke WhatsApp yang terdaftar'})
 
 # ===== INIT DB =====
 @app.cli.command("init-db")
