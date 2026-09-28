@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}OPAC - Katalog Perpustakaan{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-1 fw-bold">Katalog Publik (OPAC)</h2>
+        <p class="text-muted mb-0">Cari koleksi buku perpustakaan yang tersedia</p>
+    </div>
+</div>
+
+<div class="card border-0 mb-4">
+    <div class="card-header bg-white border-0">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <div class="d-flex gap-2 flex-wrap">
+                <input type="text" class="form-control" id="searchOpac" placeholder="Cari judul, pengarang, ISBN..." style="max-width: 400px;">
+                <select class="form-select" id="filterKategoriOpac" style="max-width: 200px;">
+                    <option value="">Semua Kategori</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div id="opacBooks" class="row g-3 p-3">
+            <div class="col-12 text-center text-muted py-5">Loading...</div>
+        </div>
+    </div>
+    <div class="card-footer bg-white border-0">
+        <nav>
+            <ul class="pagination justify-content-center mb-0" id="paginationOpac"></ul>
+        </nav>
+    </div>
+</div>
+
+<!-- Book Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalTitle">Detail Buku</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailModalBody">
+                <!-- Content loaded via JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+let currentOpacPage = 1;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadOpacBuku();
+    loadOpacKategori();
+    document.getElementById('searchOpac').addEventListener('input', debounce(function() {
+        currentOpacPage = 1;
+        loadOpacBuku();
+    }, 300));
+    document.getElementById('filterKategoriOpac').addEventListener('change', function() {
+        currentOpacPage = 1;
+        loadOpacBuku();
+    });
+});
+
+function loadOpacBuku() {
+    const search = document.getElementById('searchOpac').value;
+    const kategori = document.getElementById('filterKategoriOpac').value;
+    let url = `/api/opac/buku?page=${currentOpacPage}&search=${encodeURIComponent(search)}`;
+    if (kategori) url += `&kategori=${encodeURIComponent(kategori)}`;
+
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('opacBooks');
+            container.innerHTML = '';
+            if (data.books.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center text-muted py-5">Tidak ada buku yang ditemukan</div>';
+            } else {
+                data.books.forEach(b => {
+                    const stokClass = b.stok_tersedia > 0 ? 'bg-success' : 'bg-danger';
+                    const stokText = b.stok_tersedia > 0 ? `Tersedia (${b.stok_tersedia})` : 'Habis';
+                    container.innerHTML += `
+                        <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+                            <div class="card h-100 book-card">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="mb-2">
+                                        <span class="badge ${stokClass}">${escapeHtml(stokText)}</span>
+                                        ${b.kategori_ddc ? `<span class="badge bg-secondary ms-1">${escapeHtml(b.kategori_ddc)}</span>` : ''}
+                                    </div>
+                                    <h6 class="card-title fw-bold">${escapeHtml(b.judul)}</h6>
+                                    <p class="card-text text-muted small mb-1"><i class="bi bi-person me-1"></i>${escapeHtml(b.pengarang)}</p>
+                                    <p class="card-text text-muted small mb-1"><i class="bi bi-building me-1"></i>${escapeHtml(b.penerbit || '-')}</p>
+                                    <p class="card-text text-muted small mb-2"><i class="bi bi-calendar me-1"></i>${b.tahun_terbit || '-'}</p>
+                                    <p class="card-text text-muted small"><i class="bi bi-bookshelf me-1"></i>${escapeHtml(b.rak_nama || '-')}</p>
+                                    <button class="btn btn-sm btn-outline-primary mt-auto" onclick="showDetail(${b.id})">
+                                        <i class="bi bi-info-circle me-1"></i>Detail
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            renderOpacPagination(data.page, data.pages, data.total);
+        });
+}
+
+function renderOpacPagination(page, pages, total) {
+    const nav = document.getElementById('paginationOpac');
+    nav.innerHTML = '';
+    if (pages <= 1) return;
+    nav.innerHTML += `<li class="page-item ${page === 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="changeOpacPage(${page-1}); return false;">Previous</a></li>`;
+    for (let i = 1; i <= pages; i++) {
+        nav.innerHTML += `<li class="page-item ${i === page ? 'active' : ''}"><a class="page-link" href="#" onclick="changeOpacPage(${i}); return false;">${i}</a></li>`;
+    }
+    nav.innerHTML += `<li class="page-item ${page === pages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="changeOpacPage(${page+1}); return false;">Next</a></li>`;
+}
+
+function changeOpacPage(page) {
+    currentOpacPage = page;
+    loadOpacBuku();
+}
+
+function loadOpacKategori() {
+    fetch('/api/opac/kategori')
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('filterKategoriOpac');
+            data.forEach(c => {
+                select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+            });
+        });
+}
+
+function showDetail(id) {
+    fetch(`/api/opac/buku?per_page=100`)
+        .then(res => res.json())
+        .then(data => {
+            const b = data.books.find(x => x.id === id);
+            if (!b) return;
+            document.getElementById('detailModalTitle').textContent = b.judul;
+            document.getElementById('detailModalBody').innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless">
+                            <tr><th style="width: 150px;">Judul</th><td>${escapeHtml(b.judul)}</td></tr>
+                            <tr><th>Pengarang</th><td>${escapeHtml(b.pengarang)}</td></tr>
+                            <tr><th>Penerbit</th><td>${escapeHtml(b.penerbit || '-')}</td></tr>
+                            <tr><th>Tahun Terbit</th><td>${b.tahun_terbit || '-'}</td></tr>
+                            <tr><th>ISBN</th><td>${escapeHtml(b.isbn || '-')}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless">
+                            <tr><th style="width: 150px;">Rak</th><td>${escapeHtml(b.rak_nama || '-')}</td></tr>
+                            <tr><th>Kategori DDC</th><td>${escapeHtml(b.kategori_ddc || '-')}</td></tr>
+                            <tr><th>Stok Total</th><td>${b.stok_total}</td></tr>
+                            <tr><th>Stok Tersedia</th><td><span class="badge ${b.stok_tersedia > 0 ? 'bg-success' : 'bg-danger'}">${b.stok_tersedia}</span></td></tr>
+                        </table>
+                    </div>
+                </div>
+                ${b.deskripsi ? `<div class="mt-3"><strong>Deskripsi:</strong><p class="text-muted">${escapeHtml(b.deskripsi)}</p></div>` : ''}
+            `;
+            new bootstrap.Modal(document.getElementById('detailModal')).show();
+        });
+}
+</script>
+{% endblock %}
