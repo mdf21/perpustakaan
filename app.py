@@ -1,27 +1,30 @@
 import os
+import io
+import string
+import random
+import requests
+import openpyxl
+import barcode
 from datetime import datetime, timedelta, date
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import or_, and_, func
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import string
-import random
-import openpyxl
-import io
-from flask import send_file
-import barcode
 from barcode.writer import ImageWriter
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///perpustakaan.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///instance/perpustakaan.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True
 }
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'perpustakaan-secret-key-change-in-production')
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'covers')
+
+os.makedirs(os.path.join(app.root_path, 'instance'), exist_ok=True)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 CORS(app, resources={r"/api/*": {"origins": os.getenv('CORS_ORIGINS', '*')}}, supports_credentials=True)
 
@@ -106,6 +109,7 @@ class Buku(db.Model):
     pengarang = db.Column(db.String(150), nullable=False)
     penerbit = db.Column(db.String(150))
     tahun_terbit = db.Column(db.Integer)
+    jumlah_halaman = db.Column(db.Integer)
     stok_total = db.Column(db.Integer, default=1)
     stok_tersedia = db.Column(db.Integer, default=1)
     rak_id = db.Column(db.Integer, db.ForeignKey('raks.id'))
@@ -124,11 +128,14 @@ class Buku(db.Model):
             'pengarang': self.pengarang,
             'penerbit': self.penerbit,
             'tahun_terbit': self.tahun_terbit,
+            'jumlah_halaman': self.jumlah_halaman,
             'stok_total': self.stok_total,
             'stok_tersedia': self.stok_tersedia,
+            'stok': self.stok_tersedia,
             'rak_id': self.rak_id,
             'rak_nama': self.rak.nama_rak if self.rak else None,
-            'kategori_ddc': self.rak.kategori_ddc if self.rak else None,
+            'kategori': self.rak.kategori_ddc if self.rak else None,
+            'lokasi_rak': self.rak.nama_rak if self.rak else None,
             'deskripsi': self.deskripsi,
             'cover_image': self.cover_image
         }
@@ -425,20 +432,45 @@ def get_buku():
         'page': page
     })
 
+@app.route('/api/buku/<int:id>', methods=['GET'])
+@login_required
+def get_buku_by_id(id):
+    b = Buku.query.get_or_404(id)
+    return jsonify({'success': True, 'buku': b.to_dict()})
+
 @app.route('/api/buku', methods=['POST'])
 @role_required('admin', 'petugas')
 def create_buku():
-    data = request.form
-    if not data or not data.get('isbn') or not data.get('judul') or not data.get('pengarang'):
-        return jsonify({'success': False, 'message': 'ISBN, judul, dan pengarang wajib diisi'}), 400
+    if request.is_json:
+        data = request.get_json(silent=True)
+    else:
+        data = request.form
+    if not data or not data.get('judul') or not data.get('pengarang'):
+        return jsonify({'success': False, 'message': 'Judul dan pengarang wajib diisi'}), 400
     
     cover_image_filename = None
     if 'cover_image' in request.files:
         file = request.files['cover_image']
         if file and file.filename != '':
             filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            upload_dir = app.config['UPLOAD_FOLDER']
+            os.makedirs(upload_dir, exist_ok=True)
+            file.save(os.path.join(upload_dir, filename))
             cover_image_filename = filename
+
+    rak_id = data.get('rak_id')
+    if not rak_id:
+        kategori = data.get('kategori')
+        lokasi_rak = data.get('lokasi_rak')
+        if kategori or lokasi_rak:
+            rak_q = Rak.query
+            if lokasi_rak:
+                rak_q = rak_q.filter(Rak.nama_rak == lokasi_rak)
+            if kategori:
+                rak_q = rak_q.filter(Rak.kategori_ddc == kategori)
+            rak = rak_q.first()
+            if rak:
+                rak_id = rak.id
 
     buku = Buku(
         isbn=data.get('isbn'),
@@ -446,9 +478,10 @@ def create_buku():
         pengarang=data.get('pengarang'),
         penerbit=data.get('penerbit'),
         tahun_terbit=data.get('tahun_terbit'),
+        jumlah_halaman=data.get('jumlah_halaman'),
         stok_total=data.get('stok_total', 1),
-        stok_tersedia=data.get('stok_tersedia', 1),
-        rak_id=data.get('rak_id') if data.get('rak_id') else None,
+        stok_tersedia=data.get('stok_tersedia', data.get('stok_total', 1)),
+        rak_id=rak_id,
         deskripsi=data.get('deskripsi'),
         cover_image=cover_image_filename
     )
@@ -460,18 +493,35 @@ def create_buku():
 @role_required('admin', 'petugas')
 def update_buku(id):
     b = Buku.query.get_or_404(id)
-    data = request.form
-    if not data:
-        data = request.json # fallback for json if no form data sent
+    if request.is_json:
+        data = request.get_json(silent=True)
+    else:
+        data = request.form
+    if not data or not data.get('judul') or not data.get('pengarang'):
+        return jsonify({'success': False, 'message': 'Judul dan pengarang wajib diisi'}), 400
     
-    if not data or not data.get('isbn') or not data.get('judul') or not data.get('pengarang'):
-        return jsonify({'success': False, 'message': 'ISBN, judul, dan pengarang wajib diisi'}), 400
+    rak_id = data.get('rak_id')
+    if rak_id:
+        b.rak_id = rak_id
+    elif data.get('kategori') or data.get('lokasi_rak'):
+        kategori = data.get('kategori')
+        lokasi_rak = data.get('lokasi_rak')
+        rak_q = Rak.query
+        if lokasi_rak:
+            rak_q = rak_q.filter(Rak.nama_rak == lokasi_rak)
+        if kategori:
+            rak_q = rak_q.filter(Rak.kategori_ddc == kategori)
+        rak = rak_q.first()
+        if rak:
+            b.rak_id = rak.id
     
     if 'cover_image' in request.files:
         file = request.files['cover_image']
         if file and file.filename != '':
             filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            upload_dir = app.config['UPLOAD_FOLDER']
+            os.makedirs(upload_dir, exist_ok=True)
+            file.save(os.path.join(upload_dir, filename))
             b.cover_image = filename
 
     b.isbn = data.get('isbn', b.isbn)
@@ -479,10 +529,9 @@ def update_buku(id):
     b.pengarang = data.get('pengarang', b.pengarang)
     b.penerbit = data.get('penerbit', b.penerbit)
     b.tahun_terbit = data.get('tahun_terbit', b.tahun_terbit)
+    b.jumlah_halaman = data.get('jumlah_halaman', b.jumlah_halaman)
     b.stok_total = data.get('stok_total', b.stok_total)
     b.stok_tersedia = data.get('stok_tersedia', b.stok_tersedia)
-    if data.get('rak_id'):
-        b.rak_id = data.get('rak_id')
     b.deskripsi = data.get('deskripsi', b.deskripsi)
     db.session.commit()
     return jsonify({'success': True, 'message': 'Buku berhasil diperbarui'})
@@ -602,6 +651,12 @@ def get_anggota():
         'pages': pagination.pages,
         'page': page
     })
+
+@app.route('/api/anggota/<int:id>', methods=['GET'])
+@login_required
+def get_anggota_by_id(id):
+    a = Anggota.query.get_or_404(id)
+    return jsonify({'success': True, 'anggota': a.to_dict()})
 
 @app.route('/api/anggota', methods=['POST'])
 @role_required('admin', 'petugas')
@@ -908,7 +963,6 @@ def bayar_denda(id):
 @app.route('/api/laporan/ringkasan')
 @login_required
 def laporan_ringkasan():
-    from sqlalchemy import func
     now = datetime.utcnow()
     month_start = date(now.year, now.month, 1)
     year_start = date(now.year, 1, 1)
@@ -999,8 +1053,6 @@ def laporan_denda():
     })
 
 # ===== WA GATEWAY INTEGRATION =====
-import requests
-
 def send_wa_notification(phone_number, message):
     token = os.getenv('FONNTE_TOKEN')
     if not token:
@@ -1150,9 +1202,6 @@ def import_anggota():
     return jsonify({'success': True, 'message': f'{count} anggota berhasil diimport'})
 
 # ===== BARCODE ENDPOINT =====
-import barcode
-from barcode.writer import ImageWriter
-
 @app.route('/api/barcode/<string:code>', methods=['GET'])
 def generate_barcode(code):
     try:
@@ -1199,7 +1248,6 @@ def reset_password():
         return jsonify({'success': False, 'message': 'Akun login tidak ditemukan'})
         
     # Generate new random password (6 digits)
-    import string
     new_password = ''.join(random.choices(string.digits, k=6))
     user.set_password(new_password)
     db.session.commit()

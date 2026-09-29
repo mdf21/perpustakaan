@@ -60,8 +60,8 @@
                     <input type="hidden" id="bukuId">
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Kode Buku</label>
-                            <input type="text" class="form-control" id="kodeBuku" required>
+                            <label class="form-label">ISBN</label>
+                            <input type="text" class="form-control" id="isbn">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Judul Buku</label>
@@ -70,8 +70,8 @@
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Penulis</label>
-                            <input type="text" class="form-control" id="penulis" required>
+                            <label class="form-label">Pengarang</label>
+                            <input type="text" class="form-control" id="pengarang" required>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Penerbit</label>
@@ -84,27 +84,24 @@
                             <input type="number" class="form-control" id="tahunTerbit">
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label class="form-label">Kategori</label>
-                            <input type="text" class="form-control" id="kategori" list="kategoriList">
-                            <datalist id="kategoriList"></datalist>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">ISBN</label>
-                            <input type="text" class="form-control" id="isbn">
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
                             <label class="form-label">Jumlah Halaman</label>
                             <input type="number" class="form-control" id="jumlahHalaman">
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label class="form-label">Stok</label>
+                            <label class="form-label">Stok Tersedia</label>
                             <input type="number" class="form-control" id="stok" value="1" min="0" required>
                         </div>
-                        <div class="col-md-4 mb-3">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Kategori</label>
+                            <input type="text" class="form-control" id="kategori" list="kategoriList">
+                            <datalist id="kategoriList"></datalist>
+                        </div>
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">Lokasi Rak</label>
-                            <input type="text" class="form-control" id="lokasiRak">
+                            <input type="text" class="form-control" id="lokasiRak" list="rakList">
+                            <datalist id="rakList"></datalist>
                         </div>
                     </div>
                     <div class="mb-3">
@@ -141,7 +138,6 @@
 </div>
 {% endblock %}
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script>
 let currentPage = 1;
 
@@ -174,14 +170,14 @@ function loadBuku() {
             } else {
                 data.books.forEach(b => {
                     tbody.innerHTML += `<tr>
-                        <td><strong>${escapeHtml(b.kode_buku)}</strong></td>
+                        <td><strong>${escapeHtml(b.isbn || '-')}</strong></td>
                         <td>${escapeHtml(b.judul)}</td>
-                        <td>${escapeHtml(b.penulis)}</td>
+                        <td>${escapeHtml(b.pengarang)}</td>
                         <td><span class="badge bg-secondary">${escapeHtml(b.kategori || '-')}</span></td>
                         <td><span class="badge ${b.stok > 0 ? 'bg-success' : 'bg-danger'}">${b.stok}</span></td>
                         <td>${escapeHtml(b.lokasi_rak || '-')}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning me-1" onclick="editBuku(${b.id})"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-warning me-1" onclick="editBuku(${b.id})"><i class="bi bi-pencil"></i></button> <a href="/api/buku/${b.id}/barcode" target="_blank" class="btn btn-sm btn-info me-1" title="Cetak Barcode"><i class="bi bi-upc-scan"></i></a>
                             <button class="btn btn-sm btn-danger" onclick="confirmDelete(${b.id})"><i class="bi bi-trash"></i></button>
                         </td>
                     </tr>`;
@@ -215,23 +211,21 @@ function openModal() {
 }
 
 function editBuku(id) {
-    const modalEl = document.getElementById('bukuModal');
-    const modal = new bootstrap.Modal(modalEl);
-    fetch(`/api/buku?per_page=100`)
+    const modal = new bootstrap.Modal(document.getElementById('bukuModal'));
+    fetch(`/api/buku/${id}`)
         .then(res => res.json())
         .then(data => {
-            const b = data.books.find(x => x.id === id);
+            const b = data.buku;
             if (!b) return;
             document.getElementById('bukuId').value = b.id;
-            document.getElementById('kodeBuku').value = b.kode_buku;
+            document.getElementById('isbn').value = b.isbn || '';
             document.getElementById('judul').value = b.judul;
-            document.getElementById('penulis').value = b.penulis;
+            document.getElementById('pengarang').value = b.pengarang;
             document.getElementById('penerbit').value = b.penerbit || '';
             document.getElementById('tahunTerbit').value = b.tahun_terbit || '';
-            document.getElementById('kategori').value = b.kategori || '';
-            document.getElementById('isbn').value = b.isbn || '';
             document.getElementById('jumlahHalaman').value = b.jumlah_halaman || '';
-            document.getElementById('stok').value = b.stok;
+            document.getElementById('stok').value = b.stok || 0;
+            document.getElementById('kategori').value = b.kategori || '';
             document.getElementById('lokasiRak').value = b.lokasi_rak || '';
             document.getElementById('deskripsi').value = b.deskripsi || '';
             document.getElementById('modalTitle').textContent = 'Edit Buku';
@@ -241,16 +235,17 @@ function editBuku(id) {
 
 function saveBuku() {
     const id = document.getElementById('bukuId').value;
+    const stok = parseInt(document.getElementById('stok').value) || 0;
     const data = {
-        kode_buku: document.getElementById('kodeBuku').value,
+        isbn: document.getElementById('isbn').value,
         judul: document.getElementById('judul').value,
-        penulis: document.getElementById('penulis').value,
+        pengarang: document.getElementById('pengarang').value,
         penerbit: document.getElementById('penerbit').value,
         tahun_terbit: document.getElementById('tahunTerbit').value ? parseInt(document.getElementById('tahunTerbit').value) : null,
-        kategori: document.getElementById('kategori').value,
-        isbn: document.getElementById('isbn').value,
         jumlah_halaman: document.getElementById('jumlahHalaman').value ? parseInt(document.getElementById('jumlahHalaman').value) : null,
-        stok: parseInt(document.getElementById('stok').value) || 0,
+        stok_total: stok,
+        stok_tersedia: stok,
+        kategori: document.getElementById('kategori').value,
         lokasi_rak: document.getElementById('lokasiRak').value,
         deskripsi: document.getElementById('deskripsi').value
     };
@@ -266,7 +261,6 @@ function saveBuku() {
         if (result.success) {
             bootstrap.Modal.getInstance(document.getElementById('bukuModal')).hide();
             loadBuku();
-            loadKategori();
             alert(result.message);
         } else {
             alert(result.message);
@@ -287,7 +281,6 @@ function deleteBuku() {
             if (result.success) {
                 bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
                 loadBuku();
-                loadKategori();
                 alert(result.message);
             } else {
                 alert(result.message);
@@ -296,16 +289,26 @@ function deleteBuku() {
 }
 
 function loadKategori() {
-    fetch('/api/kategori')
+    fetch('/api/raks')
         .then(res => res.json())
-        .then(data => {
+        .then(rakList => {
             const select = document.getElementById('filterKategori');
-            const datalist = document.getElementById('kategoriList');
+            const kategoriDatalist = document.getElementById('kategoriList');
+            const rakDatalist = document.getElementById('rakList');
             const currentVal = select.value;
             select.innerHTML = '<option value="">Semua Kategori</option>';
-            data.forEach(c => {
-                select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
-                datalist.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+            kategoriDatalist.innerHTML = '';
+            rakDatalist.innerHTML = '';
+            const kategoriSet = new Set();
+            rakList.forEach(r => {
+                if (r.kategori_ddc && !kategoriSet.has(r.kategori_ddc)) {
+                    kategoriSet.add(r.kategori_ddc);
+                    select.innerHTML += `<option value="${escapeHtml(r.kategori_ddc)}">${escapeHtml(r.kategori_ddc)}</option>`;
+                    kategoriDatalist.innerHTML += `<option value="${escapeHtml(r.kategori_ddc)}">${escapeHtml(r.kategori_ddc)}</option>`;
+                }
+                if (r.nama_rak) {
+                    rakDatalist.innerHTML += `<option value="${escapeHtml(r.nama_rak)}">${escapeHtml(r.nama_rak)}</option>`;
+                }
             });
             select.value = currentVal;
         });

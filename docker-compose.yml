@@ -9,6 +9,8 @@ services:
       - "6001:5000"
     volumes:
       - ./instance:/app/instance
+      - ./static/uploads:/app/static/uploads
     environment:
-      - FLASK_ENV=production
-      - DATABASE_URL=sqlite:///perpustakaan.db
+      - FLASK_APP=app.py
+      - FLASK_DEBUG=False
+      - DATABASE_URL=sqlite:////app/instance/perpustakaan.db

@@ -188,7 +188,7 @@ function loadTransaksi() {
             } else {
                 data.transactions.forEach(t => {
                     const statusBadge = t.status === 'Dipinjam' ? 'bg-warning' : t.status === 'Dikembalikan' ? 'bg-success' : 'bg-danger';
-                    const jatuhTempo = new Date(t.tanggal_jatuh_tempo.split('-').reverse().join('-'));
+                    const jatuhTempo = new Date(t.tanggal_kembali_seharusnya.split('-').reverse().join('-'));
                     const now = new Date();
                     const isLate = t.status === 'Dipinjam' && jatuhTempo < now;
                     const displayStatus = isLate ? '<span class="badge bg-danger">Terlambat</span>' : `<span class="badge ${statusBadge}">${escapeHtml(t.status)}</span>`;
@@ -198,10 +198,10 @@ function loadTransaksi() {
                         <td>${escapeHtml(t.kelas_anggota)}</td>
                         <td>${escapeHtml(t.judul_buku)}</td>
                         <td>${t.tanggal_pinjam}</td>
-                        <td>${t.tanggal_jatuh_tempo}</td>
+                        <td>${t.tanggal_kembali_seharusnya}</td>
                         <td>${t.tanggal_kembali || '-'}</td>
                         <td>${displayStatus}</td>
-                        <td>Rp ${t.denda.toLocaleString()}</td>
+                        <td>Rp ${(t.denda || 0).toLocaleString('id-ID')}</td>
                         <td>
                             ${t.status === 'Dipinjam' ? `<button class="btn btn-sm btn-success me-1" onclick="openReturnModal(${t.id})"><i class="bi bi-check-circle"></i> Kembali</button>` : ''}
                             <button class="btn btn-sm btn-danger" onclick="confirmDelete(${t.id})"><i class="bi bi-trash"></i></button>

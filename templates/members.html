@@ -220,10 +220,11 @@ function openModal() {
 }
 
 function editAnggota(id) {
-    fetch(`/api/anggota?per_page=100`)
+    const modal = new bootstrap.Modal(document.getElementById('anggotaModal'));
+    fetch(`/api/anggota/${id}`)
         .then(res => res.json())
         .then(data => {
-            const a = data.anggota.find(x => x.id === id);
+            const a = data.anggota;
             if (!a) return;
             document.getElementById('anggotaId').value = a.id;
             document.getElementById('nis').value = a.nis;
@@ -235,7 +236,7 @@ function editAnggota(id) {
             document.getElementById('alamat').value = a.alamat || '';
             document.getElementById('status').value = a.status;
             document.getElementById('modalTitle').textContent = 'Edit Anggota';
-            new bootstrap.Modal(document.getElementById('anggotaModal')).show();
+            modal.show();
         });
 }
 
