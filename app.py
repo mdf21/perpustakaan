@@ -840,6 +840,12 @@ def get_transaksi():
         'page': page
     })
 
+@app.route('/api/transaksi/<int:id>', methods=['GET'])
+@login_required
+def get_transaksi_by_id(id):
+    t = Transaksi.query.get_or_404(id)
+    return jsonify({'success': True, 'transaksi': t.to_dict()})
+
 @app.route('/api/transaksi', methods=['POST'])
 @role_required('admin', 'petugas')
 def create_transaksi():

@@ -263,10 +263,10 @@ function saveTransaksi() {
 }
 
 function openReturnModal(id) {
-    fetch('/api/transaksi')
+    fetch(`/api/transaksi/${id}`)
         .then(res => res.json())
         .then(data => {
-            const t = data.transactions.find(x => x.id === id);
+            const t = data.transaksi;
             if (t) {
                 document.getElementById('returnId').value = id;
                 document.getElementById('returnInfo').textContent = `Kembalikan buku "${t.judul_buku}" yang dipinjam oleh ${t.nama_anggota}?`;
