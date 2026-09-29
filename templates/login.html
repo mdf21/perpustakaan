@@ -111,7 +111,8 @@
             const formData = new FormData(this);
             fetch('/login', {
                 method: 'POST',
-                body: formData
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.fromEntries(formData.entries()))
             })
             .then(res => res.json())
             .then(data => {
