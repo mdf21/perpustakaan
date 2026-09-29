@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Rak & Kategori - Perpustakaan{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-1 fw-bold">Rak & Kategori</h2>
+        <p class="text-muted mb-0">Kelola lokasi rak dan kategori DDC koleksi buku</p>
+    </div>
+</div>
+
+<div class="card border-0">
+    <div class="card-header bg-white border-0">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <input type="text" class="form-control" id="searchRak"
+                   placeholder="Cari nama rak atau kategori..." style="max-width: 400px;">
+            <button class="btn btn-primary" onclick="openModal()">
+                <i class="bi bi-plus-circle me-1"></i> Tambah Rak
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Nama Rak</th>
+                        <th>Kategori DDC</th>
+                        <th>Deskripsi</th>
+                        <th class="no-print">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="rakTable">
+                    <tr>
+                        <td colspan="4" class="text-center text-muted">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="rakModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Tambah Rak</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="rakForm">
+                    <input type="hidden" id="rakId">
+
+                    <div class="mb-3">
+                        <label class="form-label">Nama Rak</label>
+                        <input type="text" class="form-control" id="namaRak" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Kategori DDC</label>
+                        <input type="text" class="form-control" id="kategoriDdc"
+                               placeholder="Contoh: 000 - Komputer">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Deskripsi</label>
+                        <textarea class="form-control" id="deskripsi" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Batal
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveRak()">
+                    Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let rakData = [];
+let rakModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    rakModal = new bootstrap.Modal(document.getElementById('rakModal'));
+    loadRak();
+
+    document.getElementById('searchRak').addEventListener('input', renderRak);
+});
+
+async function loadRak() {
+    try {
+        const response = await fetch('/api/raks');
+        if (!response.ok) throw new Error('Gagal mengambil data rak');
+
+        rakData = await response.json();
+        renderRak();
+    } catch (error) {
+        console.error(error);
+        document.getElementById('rakTable').innerHTML =
+            '<tr><td colspan="4" class="text-center text-danger">Gagal memuat data rak</td></tr>';
+    }
+}
+
+function renderRak() {
+    const search = document.getElementById('searchRak').value.toLowerCase().trim();
+
+    const filtered = rakData.filter(r =>
+        (r.nama_rak || '').toLowerCase().includes(search) ||
+        (r.kategori_ddc || '').toLowerCase().includes(search) ||
+        (r.deskripsi || '').toLowerCase().includes(search)
+    );
+
+    const tbody = document.getElementById('rakTable');
+
+    if (!filtered.length) {
+        tbody.innerHTML =
+            '<tr><td colspan="4" class="text-center text-muted">Belum ada data rak</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(r => `
+        <tr>
+            <td>${escapeHtml(r.nama_rak || '')}</td>
+            <td>${escapeHtml(r.kategori_ddc || '-')}</td>
+            <td>${escapeHtml(r.deskripsi || '-')}</td>
+            <td class="no-print">
+                <button class="btn btn-sm btn-outline-primary me-1"
+                        onclick="editRak(${r.id})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger"
+                        onclick="deleteRak(${r.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function openModal(id = null) {
+    document.getElementById('rakForm').reset();
+    document.getElementById('rakId').value = '';
+
+    if (id) {
+        const rak = rakData.find(r => r.id === id);
+        if (!rak) return;
+
+        document.getElementById('modalTitle').textContent = 'Edit Rak';
+        document.getElementById('rakId').value = rak.id;
+        document.getElementById('namaRak').value = rak.nama_rak || '';
+        document.getElementById('kategoriDdc').value = rak.kategori_ddc || '';
+        document.getElementById('deskripsi').value = rak.deskripsi || '';
+    } else {
+        document.getElementById('modalTitle').textContent = 'Tambah Rak';
+    }
+
+    rakModal.show();
+}
+
+function editRak(id) {
+    openModal(id);
+}
+
+async function saveRak() {
+    const id = document.getElementById('rakId').value;
+
+    const data = {
+        nama_rak: document.getElementById('namaRak').value.trim(),
+        kategori_ddc: document.getElementById('kategoriDdc').value.trim(),
+        deskripsi: document.getElementById('deskripsi').value.trim()
+    };
+
+    if (!data.nama_rak) {
+        alert('Nama rak wajib diisi');
+        return;
+    }
+
+    try {
+        const response = await fetch(id ? `/api/raks/${id}` : '/api/raks', {
+            method: id ? 'PUT' : 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Gagal menyimpan rak');
+        }
+
+        rakModal.hide();
+        await loadRak();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function deleteRak(id) {
+    const rak = rakData.find(r => r.id === id);
+
+    if (!confirm(`Hapus rak "${rak?.nama_rak || ''}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/raks/${id}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Gagal menghapus rak');
+        }
+
+        await loadRak();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+}
+</script>
+
+{% endblock %}

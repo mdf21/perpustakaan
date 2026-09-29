@@ -279,7 +279,9 @@ def login():
             session['user_role'] = user.role
             session['user_name'] = user.nama
             
-            return jsonify({'success': True, 'message': 'Login berhasil', 'user': user.to_dict()})
+            if request.is_json:
+                return jsonify({'success': True, 'message': 'Login berhasil', 'user': user.to_dict()})
+            return redirect(url_for('index'))
         
         if request.is_json:
             return jsonify({'success': False, 'message': 'Username/password salah atau akun tidak aktif'}), 401
@@ -308,11 +310,6 @@ def index():
 @login_required
 def buku_page():
     return render_template('books.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
-
-@app.route('/rak')
-@login_required
-def rak_page():
-    return render_template('raks.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
 
 @app.route('/anggota')
 @login_required

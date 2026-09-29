@@ -27,9 +27,6 @@
                 <a href="/buku" class="list-group-item list-group-item-action {% if request.endpoint == 'buku_page' %}active{% endif %}">
                     <i class="bi bi-book"></i> Data Buku
                 </a>
-                <a href="/rak" class="list-group-item list-group-item-action {% if request.endpoint == 'rak_page' %}active{% endif %}">
-                    <i class="bi bi-bookshelf"></i> Rak & Kategori
-                </a>
                 <a href="/anggota" class="list-group-item list-group-item-action {% if request.endpoint == 'anggota_page' %}active{% endif %}">
                     <i class="bi bi-people"></i> Data Anggota
                 </a>
