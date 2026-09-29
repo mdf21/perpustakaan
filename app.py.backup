@@ -797,6 +797,27 @@ def bayar_denda(id):
     db.session.commit()
     return jsonify({'success': True, 'message': 'Denda berhasil dibayar', 'denda': denda.to_dict()})
 
+# ===== DENDA CRUD =====
+@app.route('/api/denda', methods=['GET'])
+@login_required
+def get_denda():
+    status = request.args.get('status', '')
+    query = Denda.query.join(Transaksi).join(Anggota)
+    if status:
+        query = query.filter(Denda.status_pembayaran == status)
+    denda_list = query.order_by(Denda.created_at.desc()).all()
+    return jsonify([d.to_dict() for d in denda_list])
+
+@app.route('/api/denda/<int:id>/bayar', methods=['PUT'])
+@role_required('admin', 'petugas')
+def bayar_denda(id):
+    denda = Denda.query.get_or_404(id)
+    if denda.status_pembayaran == 'lunas':
+        return jsonify({'success': False, 'message': 'Denda sudah lunas'})
+    denda.status_pembayaran = 'lunas'
+    denda.tanggal_bayar = date.today()
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Denda berhasil dibayar', 'denda': denda.to_dict()})
 
 # ===== LAPORAN =====
 @app.route('/api/laporan/ringkasan')
