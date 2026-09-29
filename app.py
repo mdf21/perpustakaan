@@ -11,6 +11,8 @@ import random
 import openpyxl
 import io
 from flask import send_file
+import barcode
+from barcode.writer import ImageWriter
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///perpustakaan.db')
@@ -496,6 +498,34 @@ def delete_buku(id):
     db.session.commit()
     return jsonify({'success': True, 'message': 'Buku berhasil dihapus'})
 
+@app.route('/api/buku/<int:id>/barcode', methods=['GET'])
+def get_buku_barcode(id):
+    b = Buku.query.get_or_404(id)
+    code_text = b.isbn if b.isbn else f"B-{b.id:04d}"
+    try:
+        CODE = barcode.get_barcode_class('code128')
+        rv = io.BytesIO()
+        CODE(code_text, writer=ImageWriter()).write(rv)
+        rv.seek(0)
+        return send_file(rv, mimetype='image/png', as_attachment=False, download_name=f'barcode_{code_text}.png')
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/buku/scan/<string:kode>', methods=['GET'])
+@login_required
+def scan_buku(kode):
+    buku = Buku.query.filter_by(isbn=kode).first()
+    if not buku and kode.startswith('B-'):
+        try:
+            b_id = int(kode.split('-')[1])
+            buku = Buku.query.get(b_id)
+        except:
+            pass
+            
+    if buku:
+        return jsonify({'success': True, 'buku': buku.to_dict()})
+    return jsonify({'success': False, 'message': 'Buku tidak ditemukan'}), 404
+
 # ===== RAK CRUD =====
 @app.route('/api/raks', methods=['GET'])
 @login_required
@@ -638,6 +668,82 @@ def delete_anggota(id):
     db.session.delete(a)
     db.session.commit()
     return jsonify({'success': True, 'message': 'Anggota berhasil dihapus'})
+
+@app.route('/api/anggota/upload-emis', methods=['POST'])
+@role_required('admin', 'petugas')
+def upload_emis():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'Tidak ada file'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'File belum dipilih'}), 400
+    
+    if file and file.filename.endswith(('.xlsx', '.xls')):
+        try:
+            wb = openpyxl.load_workbook(file)
+            sheet = wb.active
+            added = 0
+            
+            headers = [cell.value for cell in sheet[1]]
+            
+            def get_col_idx(name_parts):
+                for i, h in enumerate(headers):
+                    if h:
+                        h_lower = str(h).lower()
+                        if any(part in h_lower for part in name_parts):
+                            return i
+                return -1
+                
+            nis_idx = get_col_idx(['nis', 'nism', 'nomor induk'])
+            nama_idx = get_col_idx(['nama', 'siswa'])
+            kelas_idx = get_col_idx(['kelas', 'tingkat'])
+            jk_idx = get_col_idx(['jk', 'kelamin', 'gender'])
+            
+            if nis_idx == -1 or nama_idx == -1:
+                return jsonify({'success': False, 'message': 'Format Excel tidak sesuai. Pastikan ada kolom NIS dan Nama.'}), 400
+                
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                nis = str(row[nis_idx]).strip() if row[nis_idx] else None
+                nama = str(row[nama_idx]).strip() if row[nama_idx] else None
+                kelas = str(row[kelas_idx]).strip() if kelas_idx != -1 and row[kelas_idx] else '-'
+                jk = str(row[jk_idx]).strip() if jk_idx != -1 and row[jk_idx] else '-'
+                
+                if not nis or not nama or nis == 'None' or nama == 'None':
+                    continue
+                    
+                if jk.lower().startswith('l'): jk = 'L'
+                elif jk.lower().startswith('p'): jk = 'P'
+                
+                existing = Anggota.query.filter_by(nis=nis).first()
+                if not existing:
+                    anggota = Anggota(
+                        nis=nis,
+                        nama=nama,
+                        kelas=kelas,
+                        jenis_kelamin=jk,
+                        status='Aktif'
+                    )
+                    db.session.add(anggota)
+                    db.session.flush() # To get ID for user
+                    
+                    user = User(
+                        username=nis,
+                        nama=nama,
+                        role='anggota',
+                        status='aktif',
+                        anggota_id=anggota.id
+                    )
+                    user.set_password(nis)
+                    db.session.add(user)
+                    added += 1
+            
+            db.session.commit()
+            return jsonify({'success': True, 'message': f'Berhasil mengunggah {added} data siswa dari EMIS'})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': f'Error memproses Excel: {str(e)}'}), 500
+    else:
+        return jsonify({'success': False, 'message': 'Hanya menerima file .xlsx atau .xls'}), 400
 
 @app.route('/api/kelas', methods=['GET'])
 @login_required
