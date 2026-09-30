@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   web:
     build:
@@ -7,8 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: perpustakaan_app
     ports:
-      # Port kiri (5000) adalah port yang diakses dari host. Anda bisa mengubahnya jika mau (misal "8080:5000")
-      - "5000:5000"
+      # Mengubah port host ke 8080 karena port 5000 sudah digunakan di server Anda
+      - "8080:5000"
     environment:
       # Mengarahkan database SQLite ke folder /data yang di-mount sebagai volume persisten
       - DATABASE_URL=sqlite:////app/data/perpustakaan.db
