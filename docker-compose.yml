@@ -6,7 +6,7 @@ services:
     container_name: perpustakaan_app
     ports:
       # Mengubah port host ke 8080 karena port 5000 sudah digunakan di server Anda
-      - "8080:5000"
+      - "6001:5000"
     environment:
       # Mengarahkan database SQLite ke folder /data yang di-mount sebagai volume persisten
       - DATABASE_URL=sqlite:////app/data/perpustakaan.db
