@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Layanan siswa Perpustakaan Sekolah">
+    <title>{% block title %}Perpustakaan Sekolah{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { min-height: 100vh; display: flex; flex-direction: column; font-family: 'DM Sans', sans-serif; background: #f5f8f6; color: #18332b; }
+        .student-nav { background: #173d33; }
+        .student-brand { font-family: 'Newsreader', serif; font-size: 1.4rem; color: #fff; text-decoration: none; }
+        .student-brand .school-logo { width: 30px; height: 30px; object-fit: contain; background: #fff; border-radius: 3px; padding: 2px; }
+        .student-nav .nav-link { color: #d8e7dd; border-radius: 4px; padding: .55rem .8rem; }
+        .student-nav .nav-link:hover, .student-nav .nav-link.active { color: #fff; background: #2b5b4c; }
+        .student-shell { flex: 1; padding: 2.25rem 0 4rem; background-image: radial-gradient(#d7e3dc 0.7px, transparent 0.7px); background-size: 18px 18px; }
+        .student-footer { color: #65766f; }
+        .student-heading { font-family: 'Newsreader', serif; color: #173d33; }
+        .student-content .card { border-radius: 6px; }
+        .student-content .card:hover { transform: none; }
+        .student-content .btn-primary { background: #176b55; border-color: #176b55; }
+        .student-content .btn-primary:hover { background: #10513f; border-color: #10513f; }
+        @media (max-width: 575.98px) { .student-shell { padding-top: 1.25rem; } .student-brand { font-size: 1.2rem; } }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar navbar-expand-md student-nav">
+        <div class="container">
+            <a class="student-brand d-inline-flex align-items-center" href="/opac">
+                {% if school_logo %}<img class="school-logo me-2" src="{{ url_for('static', filename='uploads/school-logos/' ~ school_logo) }}" alt="Logo {{ school_name }}">{% else %}<i class="bi bi-book-half me-2"></i>{% endif %}
+                Perpustakaan
+            </a>
+            <button class="navbar-toggler border-light" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-label="Buka navigasi"><i class="bi bi-list text-white"></i></button>
+            <div class="collapse navbar-collapse" id="studentNav">
+                <div class="navbar-nav ms-auto gap-md-2">
+                    <a class="nav-link {% if request.endpoint == 'opac_page' %}active{% endif %}" href="/opac"><i class="bi bi-search me-1"></i>Katalog Buku</a>
+                    <a class="nav-link {% if request.endpoint == 'informasi_page' %}active{% endif %}" href="/informasi"><i class="bi bi-info-circle me-1"></i>Informasi</a>
+                    <a class="nav-link {% if request.endpoint == 'kunjungan_page' %}active{% endif %}" href="/kunjungan"><i class="bi bi-qr-code-scan me-1"></i>Absensi Kunjungan</a>
+                </div>
+                {% if user %}
+                <div class="d-flex flex-wrap align-items-center gap-2 ms-md-3 py-2 py-md-0">
+                    <span class="small text-white-50">{{ user.nama }}</span>
+                    <form action="{{ url_for('logout') }}" method="post" class="m-0">
+                        <button type="submit" class="btn btn-outline-light btn-sm"><i class="bi bi-box-arrow-right me-1"></i>Keluar</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+    <main class="student-shell">
+        <div class="container student-content">{% block content %}{% endblock %}</div>
+    </main>
+    <footer class="student-footer text-center small py-3">By MDF22</footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

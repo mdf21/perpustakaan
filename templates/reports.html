@@ -96,13 +96,13 @@
             </div>
             <div class="card-body">
                 <div class="row g-2 mb-3">
-                    <div class="col-sm-5">
+                    <div class="col-sm-4">
                         <input type="date" class="form-control" id="startDate">
                     </div>
-                    <div class="col-sm-5">
+                    <div class="col-sm-4">
                         <input type="date" class="form-control" id="endDate">
                     </div>
-                    <div class="col-sm-2">
+                    <div class="col-sm-4">
                         <button class="btn btn-primary w-100" onclick="loadLaporanTransaksi()">Tampilkan</button>
                     </div>
                 </div>
@@ -117,6 +117,45 @@
                 </button>
             </div>
         </div>
+    </div>
+</div>
+<div class="card border-0 mt-2">
+    <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-qr-code-scan me-2 text-success"></i>Laporan Kunjungan</h5>
+        <div class="d-flex gap-2">
+            <input type="date" class="form-control form-control-sm" id="visitStart" aria-label="Tanggal mulai kunjungan">
+            <input type="date" class="form-control form-control-sm" id="visitEnd" aria-label="Tanggal akhir kunjungan">
+            <button class="btn btn-outline-primary btn-sm" onclick="loadVisitReport()">Tampilkan</button>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Tanggal</th><th>Waktu</th><th>NIS</th><th>Nama</th><th>Kelas</th></tr></thead>
+            <tbody id="visitReport"><tr><td colspan="5" class="text-center text-muted">Pilih rentang tanggal</td></tr></tbody>
+        </table>
+    </div>
+</div>
+<div class="card border-0 mt-4">
+    <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-cash-coin me-2 text-warning"></i>Laporan Kas Denda</h5>
+        <div class="d-flex gap-2">
+            <input type="date" class="form-control form-control-sm" id="cashStart" aria-label="Tanggal mulai kas">
+            <input type="date" class="form-control form-control-sm" id="cashEnd" aria-label="Tanggal akhir kas">
+            <button class="btn btn-outline-primary btn-sm" onclick="loadCashReport()">Tampilkan</button>
+        </div>
+    </div>
+    <div class="card-body border-bottom py-2">
+        <div class="d-flex flex-wrap gap-4 small">
+            <span>Total denda: <strong id="cashTotal">Rp 0</strong></span>
+            <span>Lunas: <strong id="cashPaid">Rp 0</strong></span>
+            <span>Belum dibayar: <strong id="cashDue">Rp 0</strong></span>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>Tanggal Denda</th><th>NIS</th><th>Anggota</th><th>Buku</th><th>Jumlah</th><th>Status</th><th>Tanggal Bayar</th></tr></thead>
+            <tbody id="cashReport"><tr><td colspan="7" class="text-center text-muted">Pilih rentang tanggal</td></tr></tbody>
+        </table>
     </div>
 </div>
 {% endblock %}
@@ -193,6 +232,38 @@ function loadLaporanTransaksi() {
                     </tr>`;
                 });
             }
+        });
+}
+
+function loadVisitReport() {
+    const start = document.getElementById('visitStart').value;
+    const end = document.getElementById('visitEnd').value;
+    const params = new URLSearchParams();
+    if (start) params.set('start', start);
+    if (end) params.set('end', end);
+    fetch(`/api/laporan/kunjungan?${params}`)
+        .then(res => res.json())
+        .then(rows => {
+            const tbody = document.getElementById('visitReport');
+            tbody.innerHTML = rows.length ? rows.map(row => `<tr><td>${escapeHtml(row.tanggal)}</td><td>${escapeHtml(row.waktu)}</td><td>${escapeHtml(row.nis)}</td><td>${escapeHtml(row.nama)}</td><td>${escapeHtml(row.kelas)}</td></tr>`).join('') : '<tr><td colspan="5" class="text-center text-muted">Tidak ada data kunjungan</td></tr>';
+        });
+}
+
+function loadCashReport() {
+    const params = new URLSearchParams();
+    const start = document.getElementById('cashStart').value;
+    const end = document.getElementById('cashEnd').value;
+    if (start) params.set('start', start);
+    if (end) params.set('end', end);
+    fetch(`/api/laporan/denda?${params}`)
+        .then(res => res.json())
+        .then(data => {
+            const rupiah = amount => `Rp ${Number(amount || 0).toLocaleString('id-ID')}`;
+            document.getElementById('cashTotal').textContent = rupiah(data.total_denda);
+            document.getElementById('cashPaid').textContent = rupiah(data.total_lunas);
+            document.getElementById('cashDue').textContent = rupiah(data.total_belum);
+            const tbody = document.getElementById('cashReport');
+            tbody.innerHTML = data.denda_list.length ? data.denda_list.map(row => `<tr><td>${escapeHtml(row.tanggal_denda)}</td><td>${escapeHtml(row.nis)}</td><td>${escapeHtml(row.nama_anggota)}</td><td>${escapeHtml(row.judul_buku)}</td><td>${rupiah(row.jumlah_denda)}</td><td>${escapeHtml(row.status_pembayaran)}</td><td>${escapeHtml(row.tanggal_bayar)}</td></tr>`).join('') : '<tr><td colspan="7" class="text-center text-muted">Tidak ada data kas denda</td></tr>';
         });
 }
 </script>

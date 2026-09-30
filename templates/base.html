@@ -17,10 +17,15 @@
     <div class="d-flex" id="wrapper">
         <div id="sidebar-wrapper">
             <a href="/" class="sidebar-heading text-decoration-none">
+                {% if school_logo %}
+                <img class="sidebar-school-logo" src="{{ url_for('static', filename='uploads/school-logos/' ~ school_logo) }}" alt="Logo {{ school_name }}">
+                {% else %}
                 <i class="bi bi-book-half"></i>
-                <span>Perpustakaan</span>
+                {% endif %}
+                <span>MIMH Perpustakaan</span>
             </a>
             <div class="sidebar-nav list-group list-group-flush">
+                {% if user and user.role|lower in ['admin', 'petugas'] %}
                 <a href="/" class="list-group-item list-group-item-action {% if request.endpoint == 'index' %}active{% endif %}">
                     <i class="bi bi-speedometer2"></i> Dashboard
                 </a>
@@ -39,6 +44,18 @@
                 <a href="/laporan" class="list-group-item list-group-item-action {% if request.endpoint == 'laporan_page' %}active{% endif %}">
                     <i class="bi bi-graph-up"></i> Laporan
                 </a>
+                <a href="/referensi" class="list-group-item list-group-item-action {% if request.endpoint == 'referensi_page' %}active{% endif %}">
+                    <i class="bi bi-list-check"></i> Data Referensi
+                </a>
+                <a href="/informasi-admin" class="list-group-item list-group-item-action {% if request.endpoint == 'informasi_admin_page' %}active{% endif %}">
+                    <i class="bi bi-building"></i> Informasi Perpustakaan
+                </a>
+                {% if user.role|lower == 'admin' %}
+                <a href="/pengaturan-akun" class="list-group-item list-group-item-action {% if request.endpoint == 'pengaturan_akun_page' %}active{% endif %}">
+                    <i class="bi bi-person-gear"></i> Akun Administrator
+                </a>
+                {% endif %}
+                {% endif %}
                 <a href="/opac" class="list-group-item list-group-item-action {% if request.endpoint == 'opac_page' %}active{% endif %}">
                     <i class="bi bi-search"></i> Katalog Publik
                 </a>
@@ -79,6 +96,7 @@
                 {% endwith %}
                 {% block content %}{% endblock %}
             </div>
+            <footer class="app-footer text-muted small text-center py-3">By MDF22</footer>
         </div>
     </div>
     <div class="sidebar-overlay" id="sidebarOverlay"></div>

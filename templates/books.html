@@ -29,7 +29,7 @@
                         <th>Kode</th>
                         <th>Judul</th>
                         <th>Penulis</th>
-                        <th>Kategori</th>
+                        <th>Kategori / DDC</th>
                         <th>Stok</th>
                         <th>Lokasi</th>
                         <th class="no-print">Aksi</th>
@@ -94,7 +94,7 @@
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Kategori</label>
+                            <label class="form-label">Kategori DDC / Rak</label>
                             <input type="text" class="form-control" id="kategori" list="kategoriList">
                             <datalist id="kategoriList"></datalist>
                         </div>
@@ -103,6 +103,14 @@
                             <input type="text" class="form-control" id="lokasiRak" list="rakList">
                             <datalist id="rakList"></datalist>
                         </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label class="form-label">Jenis Buku</label><input class="form-control" id="jenisBuku" list="jenisBukuList"><datalist id="jenisBukuList"></datalist></div>
+                        <div class="col-md-6 mb-3"><label class="form-label">Kategori Buku</label><input class="form-control" id="kategoriBuku" list="kategoriBukuList"><datalist id="kategoriBukuList"></datalist></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label class="form-label">Klasifikasi DDC</label><input class="form-control" id="klasifikasiDdc" list="klasifikasiDdcList"><datalist id="klasifikasiDdcList"></datalist></div>
+                        <div class="col-md-6 mb-3"><label class="form-label">Sumber Buku</label><input class="form-control" id="sumberBuku" list="sumberBukuList"><datalist id="sumberBukuList"></datalist></div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Deskripsi</label>
@@ -144,6 +152,7 @@ let currentPage = 1;
 document.addEventListener('DOMContentLoaded', function() {
     loadBuku();
     loadKategori();
+    loadReferensiBuku();
     document.getElementById('searchBuku').addEventListener('input', debounce(function() {
         currentPage = 1;
         loadBuku();
@@ -173,7 +182,7 @@ function loadBuku() {
                         <td><strong>${escapeHtml(b.isbn || '-')}</strong></td>
                         <td>${escapeHtml(b.judul)}</td>
                         <td>${escapeHtml(b.pengarang)}</td>
-                        <td><span class="badge bg-secondary">${escapeHtml(b.kategori || '-')}</span></td>
+                        <td><span class="badge bg-secondary">${escapeHtml(b.kategori_buku || b.kategori || '-')}</span></td>
                         <td><span class="badge ${b.stok > 0 ? 'bg-success' : 'bg-danger'}">${b.stok}</span></td>
                         <td>${escapeHtml(b.lokasi_rak || '-')}</td>
                         <td>
@@ -226,6 +235,10 @@ function editBuku(id) {
             document.getElementById('jumlahHalaman').value = b.jumlah_halaman || '';
             document.getElementById('stok').value = b.stok || 0;
             document.getElementById('kategori').value = b.kategori || '';
+            document.getElementById('jenisBuku').value = b.jenis_buku || '';
+            document.getElementById('kategoriBuku').value = b.kategori_buku || '';
+            document.getElementById('klasifikasiDdc').value = b.klasifikasi_ddc || '';
+            document.getElementById('sumberBuku').value = b.sumber_buku || '';
             document.getElementById('lokasiRak').value = b.lokasi_rak || '';
             document.getElementById('deskripsi').value = b.deskripsi || '';
             document.getElementById('modalTitle').textContent = 'Edit Buku';
@@ -246,6 +259,10 @@ function saveBuku() {
         stok_total: stok,
         stok_tersedia: stok,
         kategori: document.getElementById('kategori').value,
+        jenis_buku: document.getElementById('jenisBuku').value,
+        kategori_buku: document.getElementById('kategoriBuku').value,
+        klasifikasi_ddc: document.getElementById('klasifikasiDdc').value,
+        sumber_buku: document.getElementById('sumberBuku').value,
         lokasi_rak: document.getElementById('lokasiRak').value,
         deskripsi: document.getElementById('deskripsi').value
     };
@@ -266,6 +283,13 @@ function saveBuku() {
             alert(result.message);
         }
     });
+}
+
+function loadReferensiBuku() {
+    const fields = {jenis_buku: 'jenisBukuList', kategori_buku: 'kategoriBukuList', klasifikasi_ddc: 'klasifikasiDdcList', sumber_buku: 'sumberBukuList'};
+    Object.entries(fields).forEach(([kind, listId]) => fetch(`/api/referensi/${kind}`).then(res => res.json()).then(items => {
+        document.getElementById(listId).innerHTML = items.map(item => `<option value="${escapeHtml(item.nama)}"></option>`).join('');
+    }));
 }
 
 function confirmDelete(id) {

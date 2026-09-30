@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Akun Administrator - Perpustakaan{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-1 fw-bold">Akun Administrator</h2>
+        <p class="text-muted mb-0">Perbarui username atau password untuk akun yang sedang digunakan.</p>
+    </div>
+</div>
+<div class="row">
+    <div class="col-lg-8 col-xl-6">
+        <div class="card border-0">
+            <div class="card-body">
+                <form id="credentialsForm">
+                    <div class="mb-3">
+                        <label for="adminUsername" class="form-label">Username Administrator</label>
+                        <input id="adminUsername" class="form-control" maxlength="80" value="{{ user.username }}" autocomplete="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="currentPassword" class="form-label">Password saat ini</label>
+                        <input id="currentPassword" class="form-control" type="password" autocomplete="current-password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newPassword" class="form-label">Password baru <span class="text-muted fw-normal">(kosongkan jika tidak diubah)</span></label>
+                        <input id="newPassword" class="form-control" type="password" minlength="8" autocomplete="new-password">
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirmPassword" class="form-label">Konfirmasi password baru</label>
+                        <input id="confirmPassword" class="form-control" type="password" minlength="8" autocomplete="new-password">
+                    </div>
+                    <button class="btn btn-primary" type="submit"><i class="bi bi-shield-lock me-1"></i>Simpan Perubahan</button>
+                    <div id="credentialsMessage" class="small mt-3" role="status" aria-live="polite"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('credentialsForm').addEventListener('submit', async function(event) {
+    event.preventDefault();
+    const message = document.getElementById('credentialsMessage');
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    if (newPassword !== confirmPassword) {
+        message.className = 'small mt-3 text-danger';
+        message.textContent = 'Konfirmasi password baru tidak sama.';
+        return;
+    }
+    const response = await fetch('/api/admin/kredensial', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            username: document.getElementById('adminUsername').value,
+            current_password: document.getElementById('currentPassword').value,
+            new_password: newPassword,
+            confirm_password: confirmPassword
+        })
+    });
+    const result = await response.json();
+    message.className = `small mt-3 ${result.success ? 'text-success' : 'text-danger'}`;
+    message.textContent = result.message;
+    if (result.success) {
+        document.getElementById('currentPassword').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+    }
+});
+</script>
+{% endblock %}

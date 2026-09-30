@@ -77,17 +77,8 @@
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Jurusan</label>
-                            <select class="form-select" id="jurusan">
-                                <option value="">Pilih Jurusan</option>
-                                <option value="IPA">IPA</option>
-                                <option value="IPS">IPS</option>
-                                <option value="Bahasa">Bahasa</option>
-                                <option value="TKJ">TKJ</option>
-                                <option value="RPL">RPL</option>
-                                <option value="AKL">AKL</option>
-                                <option value="OTKP">OTKP</option>
-                                <option value="Lainnya">Lainnya</option>
-                            </select>
+                            <input class="form-control" id="jurusan" list="jurusanList" placeholder="Pilih atau ketik jurusan">
+                            <datalist id="jurusanList"></datalist>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Jenis Kelamin</label>
@@ -143,10 +134,40 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ubah Password Anggota</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="passwordForm">
+                    <input type="hidden" id="passwordMemberId">
+                    <div class="mb-3">
+                        <label for="memberNewPassword" class="form-label">Password baru</label>
+                        <input id="memberNewPassword" class="form-control" type="password" minlength="8" autocomplete="new-password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="memberConfirmPassword" class="form-label">Konfirmasi password baru</label>
+                        <input id="memberConfirmPassword" class="form-control" type="password" minlength="8" autocomplete="new-password" required>
+                    </div>
+                    <div id="passwordMessage" class="small" role="status" aria-live="polite"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" onclick="saveAnggotaPassword()"><i class="bi bi-key me-1"></i>Simpan Password</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block extra_js %}
 <script>
 let currentPage = 1;
+const canResetMemberPassword = {{ can_reset_password|tojson }};
 
 document.addEventListener('DOMContentLoaded', function() {
     loadAnggota();
@@ -186,6 +207,8 @@ function loadAnggota() {
                         <td>${escapeHtml(a.no_telepon || '-')}</td>
                         <td><span class="badge ${statusBadge}">${escapeHtml(a.status)}</span></td>
                         <td>
+                            <a class="btn btn-sm btn-outline-primary me-1" href="/kartu-anggota/${a.id}" target="_blank" title="Cetak kartu anggota"><i class="bi bi-qr-code"></i></a>
+                            ${canResetMemberPassword ? `<button class="btn btn-sm btn-outline-secondary me-1" onclick="openPasswordModal(${a.id})" title="Ubah password anggota"><i class="bi bi-key"></i></button>` : ''}
                             <button class="btn btn-sm btn-warning me-1" onclick="editAnggota(${a.id})"><i class="bi bi-pencil"></i></button>
                             <button class="btn btn-sm btn-danger" onclick="confirmDelete(${a.id})"><i class="bi bi-trash"></i></button>
                         </td>
@@ -272,6 +295,38 @@ function saveAnggota() {
     });
 }
 
+function openPasswordModal(id) {
+    document.getElementById('passwordForm').reset();
+    document.getElementById('passwordMemberId').value = id;
+    document.getElementById('passwordMessage').textContent = '';
+    new bootstrap.Modal(document.getElementById('passwordModal')).show();
+}
+
+async function saveAnggotaPassword() {
+    const form = document.getElementById('passwordForm');
+    if (!form.reportValidity()) return;
+    const message = document.getElementById('passwordMessage');
+    const newPassword = document.getElementById('memberNewPassword').value;
+    const confirmPassword = document.getElementById('memberConfirmPassword').value;
+    if (newPassword !== confirmPassword) {
+        message.className = 'small text-danger';
+        message.textContent = 'Konfirmasi password baru tidak sama.';
+        return;
+    }
+    const memberId = document.getElementById('passwordMemberId').value;
+    const response = await fetch(`/api/anggota/${memberId}/password`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({new_password: newPassword, confirm_password: confirmPassword})
+    });
+    const result = await response.json();
+    message.className = `small ${result.success ? 'text-success' : 'text-danger'}`;
+    message.textContent = result.message;
+    if (result.success) {
+        setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide(), 900);
+    }
+}
+
 function confirmDelete(id) {
     document.getElementById('deleteId').value = id;
     new bootstrap.Modal(document.getElementById('deleteModal')).show();
@@ -295,18 +350,24 @@ function deleteAnggota() {
 
 function loadKelas() {
     fetch('/api/kelas')
-        .then(res => res.json())
-        .then(data => {
-            const select = document.getElementById('filterKelas');
-            const datalist = document.getElementById('kelasList');
-            const currentVal = select.value;
-            select.innerHTML = '<option value="">Semua Kelas</option>';
-            data.forEach(c => {
-                select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
-                datalist.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
-            });
-            select.value = currentVal;
+    Promise.all([
+        fetch('/api/kelas').then(res => res.json()),
+        fetch('/api/referensi/kelas').then(res => res.json()),
+        fetch('/api/referensi/jurusan').then(res => res.json())
+    ]).then(([memberClasses, referenceClasses, majors]) => {
+        const select = document.getElementById('filterKelas');
+        const datalist = document.getElementById('kelasList');
+        const currentVal = select.value;
+        const classes = [...new Set([...memberClasses, ...referenceClasses.map(item => item.nama)])].sort();
+        select.innerHTML = '<option value="">Semua Kelas</option>';
+        datalist.innerHTML = '';
+        classes.forEach(c => {
+            select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+            datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
         });
+        document.getElementById('jurusanList').innerHTML = majors.map(item => `<option value="${escapeHtml(item.nama)}"></option>`).join('');
+        select.value = currentVal;
+    });
 }
 
 function debounce(func, wait) {

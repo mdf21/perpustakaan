@@ -68,6 +68,16 @@ body {
     opacity: 0.9;
 }
 
+.sidebar-school-logo {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    object-fit: contain;
+    background: var(--white);
+    border-radius: 4px;
+    padding: 2px;
+}
+
 .sidebar-nav {
     flex: 1;
     overflow-y: auto;
@@ -111,6 +121,9 @@ body {
 
 /* ===== MAIN CONTENT ===== */
 #page-content-wrapper {
+    flex: 0 1 calc(100% - var(--sidebar-width));
+    min-width: 0;
+    width: calc(100% - var(--sidebar-width));
     margin-left: var(--sidebar-width);
     min-height: 100vh;
     display: flex;
@@ -171,6 +184,7 @@ body {
 /* ===== CONTENT AREA ===== */
 .main-content {
     flex: 1;
+    min-width: 0;
     padding: 2rem;
     max-width: 1400px;
     margin: 0 auto;
@@ -470,10 +484,24 @@ body {
 
     #page-content-wrapper {
         margin-left: 0 !important;
+        flex: 0 0 100%;
+        width: 100%;
+        min-width: 0;
     }
 
     .navbar {
-        padding: 0 1rem;
+        height: auto;
+        min-height: var(--header-height);
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+    }
+
+    .navbar > .ms-auto {
+        min-width: 0;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.5rem !important;
     }
 
     .table-responsive {

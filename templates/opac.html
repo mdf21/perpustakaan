@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "student_base.html" %}
 {% block title %}OPAC - Katalog Perpustakaan{% endblock %}
 {% block content %}
 <div class="row mb-4">
@@ -50,7 +50,6 @@
 </div>
 {% endblock %}
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script>
 let currentOpacPage = 1;
 
@@ -79,7 +78,12 @@ function loadOpacBuku() {
             const container = document.getElementById('opacBooks');
             container.innerHTML = '';
             if (data.books.length === 0) {
-                container.innerHTML = '<div class="col-12 text-center text-muted py-5">Tidak ada buku yang ditemukan</div>';
+                const emptyMessage = data.catalog_total === 0
+                    ? 'Belum ada buku yang didaftarkan di katalog.'
+                    : data.available_total === 0
+                        ? 'Belum ada buku yang tersedia untuk dipinjam.'
+                        : 'Tidak ada buku yang cocok dengan pencarian ini.';
+                container.innerHTML = `<div class="col-12 text-center text-muted py-5">${emptyMessage}</div>`;
             } else {
                 data.books.forEach(b => {
                     const stokClass = b.stok_tersedia > 0 ? 'bg-success' : 'bg-danger';
@@ -90,7 +94,8 @@ function loadOpacBuku() {
                                 <div class="card-body d-flex flex-column">
                                     <div class="mb-2">
                                         <span class="badge ${stokClass}">${escapeHtml(stokText)}</span>
-                                        ${b.kategori_ddc ? `<span class="badge bg-secondary ms-1">${escapeHtml(b.kategori_ddc)}</span>` : ''}
+                                        ${b.kategori_buku ? `<span class="badge bg-secondary ms-1">${escapeHtml(b.kategori_buku)}</span>` : ''}
+                                        ${b.kategori_ddc ? `<span class="badge bg-light text-dark border ms-1">DDC ${escapeHtml(b.kategori_ddc)}</span>` : ''}
                                     </div>
                                     <h6 class="card-title fw-bold">${escapeHtml(b.judul)}</h6>
                                     <p class="card-text text-muted small mb-1"><i class="bi bi-person me-1"></i>${escapeHtml(b.pengarang)}</p>
@@ -159,6 +164,7 @@ function showDetail(id) {
                         <table class="table table-sm table-borderless">
                             <tr><th style="width: 150px;">Rak</th><td>${escapeHtml(b.rak_nama || '-')}</td></tr>
                             <tr><th>Kategori DDC</th><td>${escapeHtml(b.kategori_ddc || '-')}</td></tr>
+                            <tr><th>Kategori Buku</th><td>${escapeHtml(b.kategori_buku || '-')}</td></tr>
                             <tr><th>Stok Total</th><td>${b.stok_total}</td></tr>
                             <tr><th>Stok Tersedia</th><td><span class="badge ${b.stok_tersedia > 0 ? 'bg-success' : 'bg-danger'}">${b.stok_tersedia}</span></td></tr>
                         </table>

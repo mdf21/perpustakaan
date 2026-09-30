@@ -5,6 +5,14 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function debounce(callback, delay = 300) {
+    let timeoutId;
+    return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => callback.apply(this, args), delay);
+    };
+}
+
 function formatRupiah(angka) {
     if (!angka && angka !== 0) return 'Rp 0';
     return 'Rp ' + parseInt(angka).toLocaleString('id-ID');

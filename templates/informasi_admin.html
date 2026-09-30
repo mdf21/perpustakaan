@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Informasi Perpustakaan - Petugas{% endblock %}
+{% block content %}
+<div class="row mb-4"><div class="col-12"><h2 class="mb-1 fw-bold">Informasi Perpustakaan</h2><p class="text-muted mb-0">Konten ini tampil pada halaman informasi siswa.</p></div></div>
+<div class="card border-0"><div class="card-body">
+    <form id="infoForm">
+        <div class="mb-3"><label for="namaSekolah" class="form-label">Nama sekolah/perpustakaan</label><input id="namaSekolah" class="form-control" maxlength="200" value="{{ info.get('nama_sekolah', '') }}" required></div>
+        <div class="mb-3">
+            <label for="logoFile" class="form-label">Logo sekolah</label>
+            <div id="logoPreview" class="d-flex align-items-center justify-content-center border bg-white mb-2" style="width: 88px; height: 88px;">
+                {% if info.get('logo_image') %}
+                <img src="{{ url_for('static', filename='uploads/school-logos/' ~ info.get('logo_image')) }}" alt="Logo {{ info.get('nama_sekolah', 'Sekolah') }}" style="width: 100%; height: 100%; object-fit: contain;">
+                {% else %}
+                <i class="bi bi-building fs-2 text-secondary" aria-hidden="true"></i>
+                {% endif %}
+            </div>
+            <input id="logoFile" class="form-control" type="file" accept="image/png,image/jpeg,image/webp">
+            <div class="form-text">Format PNG, JPG, atau WebP; maksimal 2 MB.</div>
+        </div>
+        <div class="mb-3"><label for="sejarah" class="form-label">Sejarah</label><textarea id="sejarah" class="form-control" rows="5">{{ info.get('sejarah', '') }}</textarea></div>
+        <div class="row">
+            <div class="col-md-6 mb-3"><label for="visi" class="form-label">Visi</label><textarea id="visi" class="form-control" rows="4">{{ info.get('visi', '') }}</textarea></div>
+            <div class="col-md-6 mb-3"><label for="misi" class="form-label">Misi</label><textarea id="misi" class="form-control" rows="4">{{ info.get('misi', '') }}</textarea></div>
+        </div>
+        <div class="mb-3"><label for="struktur" class="form-label">Struktur organisasi</label><textarea id="struktur" class="form-control" rows="5" placeholder="Tuliskan jabatan dan nama, satu baris untuk setiap posisi">{{ info.get('struktur_organisasi', '') }}</textarea></div>
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check2 me-1"></i>Simpan Informasi</button>
+        <span id="saveMessage" class="ms-3 small" role="status"></span>
+    </form>
+</div></div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const logoInput = document.getElementById('logoFile');
+const logoPreview = document.getElementById('logoPreview');
+let previewUrl = null;
+
+logoInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(file);
+    const image = document.createElement('img');
+    image.src = previewUrl;
+    image.alt = 'Preview logo sekolah';
+    image.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
+    logoPreview.replaceChildren(image);
+});
+
+document.getElementById('infoForm').addEventListener('submit', async function(event) {
+    event.preventDefault();
+    const message = document.getElementById('saveMessage');
+    const formData = new FormData();
+    formData.append('nama_sekolah', document.getElementById('namaSekolah').value);
+    formData.append('sejarah', document.getElementById('sejarah').value);
+    formData.append('visi', document.getElementById('visi').value);
+    formData.append('misi', document.getElementById('misi').value);
+    formData.append('struktur_organisasi', document.getElementById('struktur').value);
+    const logo = logoInput.files[0];
+    if (logo) formData.append('logo', logo);
+    try {
+        const response = await fetch('/api/informasi', {method: 'PUT', body: formData});
+        const result = await response.json();
+        message.textContent = result.message;
+        message.className = `ms-3 small ${result.success ? 'text-success' : 'text-danger'}`;
+        if (result.success) logoInput.value = '';
+    } catch (error) {
+        message.textContent = 'Informasi tidak dapat disimpan. Periksa koneksi lalu coba lagi.';
+        message.className = 'ms-3 small text-danger';
+    }
+});
+</script>
+{% endblock %}

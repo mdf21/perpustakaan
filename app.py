@@ -5,26 +5,33 @@ import random
 import requests
 import openpyxl
 import barcode
+import qrcode
+import uuid
 from datetime import datetime, timedelta, date
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, inspect, text
+from sqlalchemy.exc import IntegrityError
+from itsdangerous import URLSafeSerializer, BadSignature
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from barcode.writer import ImageWriter
+from PIL import Image, UnidentifiedImageError
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///instance/perpustakaan.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///perpustakaan.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True
 }
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'perpustakaan-secret-key-change-in-production')
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'covers')
+app.config['SCHOOL_LOGO_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads', 'school-logos')
 
 os.makedirs(os.path.join(app.root_path, 'instance'), exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['SCHOOL_LOGO_FOLDER'], exist_ok=True)
 
 CORS(app, resources={r"/api/*": {"origins": os.getenv('CORS_ORIGINS', '*')}}, supports_credentials=True)
 
@@ -37,6 +44,14 @@ BUKU_TERLAMBAT = 'Terlambat'
 # Fine configuration
 DENDA_PER_HARI = 1000
 MAX_PINJAM_PER_ANGGOTA = 3
+REFERENSI_TYPES = {
+    'jenis_buku': 'Jenis Buku',
+    'jurusan': 'Jurusan',
+    'kategori_buku': 'Kategori Buku',
+    'kelas': 'Kelas',
+    'klasifikasi_ddc': 'Klasifikasi DDC',
+    'sumber_buku': 'Sumber Buku'
+}
 
 @app.errorhandler(404)
 def not_found(error):
@@ -115,6 +130,10 @@ class Buku(db.Model):
     rak_id = db.Column(db.Integer, db.ForeignKey('raks.id'))
     deskripsi = db.Column(db.Text)
     cover_image = db.Column(db.String(255))
+    jenis_buku = db.Column(db.String(100))
+    kategori_buku = db.Column(db.String(100))
+    klasifikasi_ddc = db.Column(db.String(100))
+    sumber_buku = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -134,8 +153,13 @@ class Buku(db.Model):
             'stok': self.stok_tersedia,
             'rak_id': self.rak_id,
             'rak_nama': self.rak.nama_rak if self.rak else None,
-            'kategori': self.rak.kategori_ddc if self.rak else None,
+            'kategori': self.klasifikasi_ddc or (self.rak.kategori_ddc if self.rak else None),
+            'kategori_ddc': self.klasifikasi_ddc or (self.rak.kategori_ddc if self.rak else None),
             'lokasi_rak': self.rak.nama_rak if self.rak else None,
+            'jenis_buku': self.jenis_buku,
+            'kategori_buku': self.kategori_buku,
+            'klasifikasi_ddc': self.klasifikasi_ddc or (self.rak.kategori_ddc if self.rak else None),
+            'sumber_buku': self.sumber_buku,
             'deskripsi': self.deskripsi,
             'cover_image': self.cover_image
         }
@@ -171,6 +195,56 @@ class Anggota(db.Model):
             'status': self.status,
             'tanggal_bergabung': self.tanggal_bergabung.strftime('%d-%m-%Y') if self.tanggal_bergabung else ''
         }
+
+class Kunjungan(db.Model):
+    __tablename__ = 'kunjungan'
+    __table_args__ = (db.UniqueConstraint('anggota_id', 'tanggal', name='uq_kunjungan_anggota_tanggal'),)
+    id = db.Column(db.Integer, primary_key=True)
+    anggota_id = db.Column(db.Integer, db.ForeignKey('anggota.id'), nullable=False)
+    tanggal = db.Column(db.Date, nullable=False, default=date.today)
+    waktu = db.Column(db.DateTime, nullable=False, default=datetime.now)
+    anggota = db.relationship('Anggota', backref='kunjungan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'anggota_id': self.anggota_id,
+            'nis': self.anggota.nis if self.anggota else None,
+            'nama': self.anggota.nama if self.anggota else None,
+            'kelas': self.anggota.kelas if self.anggota else None,
+            'tanggal': self.tanggal.strftime('%d-%m-%Y'),
+            'waktu': self.waktu.strftime('%H:%M:%S')
+        }
+
+class PerpustakaanInfo(db.Model):
+    __tablename__ = 'perpustakaan_info'
+    id = db.Column(db.Integer, primary_key=True)
+    nama_sekolah = db.Column(db.String(200), default='Perpustakaan Sekolah')
+    sejarah = db.Column(db.Text, default='')
+    visi = db.Column(db.Text, default='')
+    misi = db.Column(db.Text, default='')
+    struktur_organisasi = db.Column(db.Text, default='')
+    logo_image = db.Column(db.String(255))
+
+    def to_dict(self):
+        return {
+            'nama_sekolah': self.nama_sekolah or 'Perpustakaan Sekolah',
+            'sejarah': self.sejarah or '',
+            'visi': self.visi or '',
+            'misi': self.misi or '',
+            'struktur_organisasi': self.struktur_organisasi or '',
+            'logo_image': self.logo_image
+        }
+
+class Referensi(db.Model):
+    __tablename__ = 'referensi'
+    __table_args__ = (db.UniqueConstraint('jenis', 'nama', name='uq_referensi_jenis_nama'),)
+    id = db.Column(db.Integer, primary_key=True)
+    jenis = db.Column(db.String(40), nullable=False)
+    nama = db.Column(db.String(100), nullable=False)
+
+    def to_dict(self):
+        return {'id': self.id, 'jenis': self.jenis, 'nama': self.nama}
 
 class Transaksi(db.Model):
     __tablename__ = 'transaksi'
@@ -239,6 +313,11 @@ def login_required(f):
             if request.path.startswith('/api/'):
                 return jsonify({'success': False, 'message': 'Login required'}), 401
             return redirect(url_for('login'))
+        user = User.query.get(session['user_id'])
+        if user and (user.role or '').strip().lower() == 'anggota':
+            if request.path.startswith('/api/'):
+                return jsonify({'success': False, 'message': 'Anggota hanya dapat mengakses layanan siswa'}), 403
+            return redirect(url_for('opac_page'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -252,7 +331,8 @@ def role_required(*roles):
                     return jsonify({'success': False, 'message': 'Login required'}), 401
                 return redirect(url_for('login'))
             user = User.query.get(session['user_id'])
-            if not user or user.role not in roles:
+            allowed_roles = {role.lower() for role in roles}
+            if not user or (user.role or '').strip().lower() not in allowed_roles:
                 if request.path.startswith('/api/'):
                     return jsonify({'success': False, 'message': 'Access denied'}), 403
                 return render_template('dashboard.html', current_date=datetime.now().strftime('%d %B %Y')), 403
@@ -264,6 +344,27 @@ def get_current_user():
     if 'user_id' in session:
         return User.query.get(session['user_id'])
     return None
+
+@app.context_processor
+def inject_school_branding():
+    info = PerpustakaanInfo.query.first()
+    logo_filename = os.path.basename(info.logo_image) if info and info.logo_image else None
+    logo_path = os.path.join(app.config['SCHOOL_LOGO_FOLDER'], logo_filename) if logo_filename else None
+    return {
+        'school_name': info.nama_sekolah if info and info.nama_sekolah else 'Perpustakaan Sekolah',
+        'school_logo': logo_filename if logo_path and os.path.isfile(logo_path) else None
+    }
+
+def initialize_database():
+    db.create_all()
+    book_columns = {column['name'] for column in inspect(db.engine).get_columns('buku')}
+    for column in ('jenis_buku', 'kategori_buku', 'klasifikasi_ddc', 'sumber_buku'):
+        if column not in book_columns:
+            db.session.execute(text(f'ALTER TABLE buku ADD COLUMN {column} VARCHAR(100)'))
+    info_columns = {column['name'] for column in inspect(db.engine).get_columns('perpustakaan_info')}
+    if 'logo_image' not in info_columns:
+        db.session.execute(text('ALTER TABLE perpustakaan_info ADD COLUMN logo_image VARCHAR(255)'))
+    db.session.commit()
 
 # ===== AUTH ROUTES =====
 @app.route('/login', methods=['GET', 'POST'])
@@ -298,6 +399,42 @@ def auth_me():
     user = get_current_user()
     return jsonify({'success': True, 'user': user.to_dict() if user else None})
 
+@app.route('/pengaturan-akun')
+@role_required('admin')
+def pengaturan_akun_page():
+    return render_template('account.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
+
+@app.route('/api/admin/kredensial', methods=['PUT'])
+@role_required('admin')
+def update_admin_credentials():
+    data = request.get_json(silent=True) or {}
+    user = get_current_user()
+    username = (data.get('username') or '').strip()
+    current_password = data.get('current_password') or ''
+    new_password = data.get('new_password') or ''
+    confirm_password = data.get('confirm_password') or ''
+
+    if not user or not current_password or not user.check_password(current_password):
+        return jsonify({'success': False, 'message': 'Password saat ini tidak sesuai'}), 401
+    if not username or len(username) > 80:
+        return jsonify({'success': False, 'message': 'Username wajib diisi dan maksimal 80 karakter'}), 400
+    if User.query.filter(User.username == username, User.id != user.id).first():
+        return jsonify({'success': False, 'message': 'Username sudah digunakan'}), 409
+    if new_password and len(new_password) < 8:
+        return jsonify({'success': False, 'message': 'Password baru minimal 8 karakter'}), 400
+    if new_password != confirm_password:
+        return jsonify({'success': False, 'message': 'Konfirmasi password baru tidak sama'}), 400
+
+    user.username = username
+    if new_password:
+        user.set_password(new_password)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Username sudah digunakan'}), 409
+    return jsonify({'success': True, 'message': 'Kredensial Administrator berhasil diperbarui', 'user': user.to_dict()})
+
 # ===== DEFAULT ROUTES =====
 @app.route('/')
 @login_required
@@ -317,7 +454,13 @@ def rak_page():
 @app.route('/anggota')
 @login_required
 def anggota_page():
-    return render_template('members.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
+    user = get_current_user()
+    return render_template(
+        'members.html',
+        current_date=datetime.now().strftime('%d %B %Y'),
+        user=user,
+        can_reset_password=user and (user.role or '').strip().lower() == 'admin'
+    )
 
 @app.route('/transaksi')
 @login_required
@@ -329,10 +472,196 @@ def transaksi_page():
 def laporan_page():
     return render_template('reports.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
 
+@app.route('/referensi')
+@role_required('admin', 'petugas')
+def referensi_page():
+    return render_template('referensi.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user(), reference_types=REFERENSI_TYPES)
+
+@app.route('/api/referensi/<string:jenis>')
+@role_required('admin', 'petugas')
+def get_referensi(jenis):
+    if jenis not in REFERENSI_TYPES:
+        return jsonify({'success': False, 'message': 'Jenis referensi tidak dikenal'}), 404
+    items = Referensi.query.filter_by(jenis=jenis).order_by(Referensi.nama).all()
+    return jsonify([item.to_dict() for item in items])
+
+@app.route('/api/referensi', methods=['POST'])
+@role_required('admin', 'petugas')
+def create_referensi():
+    data = request.get_json(silent=True) or {}
+    jenis = data.get('jenis', '')
+    nama = data.get('nama', '').strip()
+    if jenis not in REFERENSI_TYPES or not nama:
+        return jsonify({'success': False, 'message': 'Jenis dan nama referensi wajib diisi'}), 400
+    if Referensi.query.filter_by(jenis=jenis, nama=nama).first():
+        return jsonify({'success': False, 'message': 'Data referensi sudah ada'}), 409
+    item = Referensi(jenis=jenis, nama=nama)
+    db.session.add(item)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Data referensi sudah ada'}), 409
+    return jsonify({'success': True, 'referensi': item.to_dict()})
+
+@app.route('/api/referensi/<int:id>', methods=['DELETE'])
+@role_required('admin', 'petugas')
+def delete_referensi(id):
+    item = Referensi.query.get_or_404(id)
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Referensi berhasil dihapus'})
+
 # ===== OPAC (Public Catalog - No Login Required) =====
 @app.route('/opac')
 def opac_page():
-    return render_template('opac.html', current_date=datetime.now().strftime('%d %B %Y'))
+    return render_template('opac.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
+
+@app.route('/informasi')
+def informasi_page():
+    info = PerpustakaanInfo.query.first()
+    return render_template('informasi.html', info=info.to_dict() if info else {}, user=get_current_user())
+
+@app.route('/kunjungan')
+def kunjungan_page():
+    return render_template('kunjungan.html', user=get_current_user())
+
+@app.route('/informasi-admin')
+@role_required('admin', 'petugas')
+def informasi_admin_page():
+    info = PerpustakaanInfo.query.first()
+    return render_template(
+        'informasi_admin.html',
+        info=info.to_dict() if info else {},
+        current_date=datetime.now().strftime('%d %B %Y'),
+        user=get_current_user()
+    )
+
+@app.route('/api/opac/informasi')
+def get_informasi_perpustakaan():
+    info = PerpustakaanInfo.query.first()
+    return jsonify(info.to_dict() if info else {
+        'nama_sekolah': 'Perpustakaan Sekolah',
+        'sejarah': '', 'visi': '', 'misi': '', 'struktur_organisasi': ''
+    })
+
+@app.route('/api/informasi', methods=['PUT'])
+@role_required('admin', 'petugas')
+def update_informasi_perpustakaan():
+    data = request.get_json(silent=True) or {} if request.is_json else request.form
+    logo_file = None if request.is_json else request.files.get('logo')
+    info = PerpustakaanInfo.query.first()
+    if not info:
+        info = PerpustakaanInfo()
+        db.session.add(info)
+
+    new_logo_filename = None
+    if logo_file and logo_file.filename:
+        extension = os.path.splitext(secure_filename(logo_file.filename))[1].lower()
+        if extension not in {'.png', '.jpg', '.jpeg', '.webp'}:
+            return jsonify({'success': False, 'message': 'Logo harus berupa PNG, JPG, atau WebP'}), 400
+        logo_file.stream.seek(0, os.SEEK_END)
+        file_size = logo_file.stream.tell()
+        logo_file.stream.seek(0)
+        if file_size > 2 * 1024 * 1024:
+            return jsonify({'success': False, 'message': 'Ukuran logo maksimal 2 MB'}), 400
+        try:
+            with Image.open(logo_file.stream) as image:
+                if image.format not in {'PNG', 'JPEG', 'WEBP'}:
+                    return jsonify({'success': False, 'message': 'Format gambar logo tidak didukung'}), 400
+                image.verify()
+        except (UnidentifiedImageError, OSError, ValueError):
+            return jsonify({'success': False, 'message': 'File logo bukan gambar yang valid'}), 400
+        logo_file.stream.seek(0)
+        new_logo_filename = f'{uuid.uuid4().hex}{extension}'
+        logo_path = os.path.join(app.config['SCHOOL_LOGO_FOLDER'], new_logo_filename)
+        logo_file.save(logo_path)
+
+    previous_logo = info.logo_image
+    info.nama_sekolah = (data.get('nama_sekolah') or '').strip() or 'Perpustakaan Sekolah'
+    info.sejarah = data.get('sejarah', '').strip()
+    info.visi = data.get('visi', '').strip()
+    info.misi = data.get('misi', '').strip()
+    info.struktur_organisasi = data.get('struktur_organisasi', '').strip()
+    if new_logo_filename:
+        info.logo_image = new_logo_filename
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        if new_logo_filename:
+            try:
+                os.remove(os.path.join(app.config['SCHOOL_LOGO_FOLDER'], new_logo_filename))
+            except OSError:
+                app.logger.warning('Unable to remove an uncommitted school logo')
+        raise
+    if new_logo_filename and previous_logo:
+        previous_path = os.path.join(app.config['SCHOOL_LOGO_FOLDER'], os.path.basename(previous_logo))
+        try:
+            if os.path.isfile(previous_path):
+                os.remove(previous_path)
+        except OSError:
+            app.logger.warning('Unable to remove a replaced school logo')
+    return jsonify({'success': True, 'message': 'Informasi perpustakaan berhasil disimpan'})
+
+def anggota_qr_token(anggota_id):
+    serializer = URLSafeSerializer(app.config['SECRET_KEY'], salt='kartu-anggota')
+    return serializer.dumps({'anggota_id': anggota_id})
+
+@app.route('/api/anggota/<int:id>/qrcode')
+@role_required('admin', 'petugas')
+def get_anggota_qrcode(id):
+    anggota = Anggota.query.get_or_404(id)
+    image = qrcode.make(anggota_qr_token(anggota.id))
+    output = io.BytesIO()
+    image.save(output, format='PNG')
+    output.seek(0)
+    return send_file(output, mimetype='image/png', download_name=f'kartu_{anggota.nis}.png')
+
+@app.route('/kartu-anggota/<int:id>')
+@role_required('admin', 'petugas')
+def kartu_anggota_page(id):
+    anggota = Anggota.query.get_or_404(id)
+    info = PerpustakaanInfo.query.first()
+    return render_template('kartu_anggota.html', anggota=anggota, info=info.to_dict() if info else {})
+
+@app.route('/api/kunjungan/scan', methods=['POST'])
+def catat_kunjungan():
+    data = request.get_json(silent=True) or {}
+    token = data.get('qr_code', '').strip()
+    if not token:
+        return jsonify({'success': False, 'message': 'QR kartu anggota wajib dipindai'}), 400
+    serializer = URLSafeSerializer(app.config['SECRET_KEY'], salt='kartu-anggota')
+    try:
+        payload = serializer.loads(token)
+    except BadSignature:
+        return jsonify({'success': False, 'message': 'QR kartu tidak valid'}), 400
+    anggota = Anggota.query.filter_by(id=payload.get('anggota_id'), status='Aktif').first()
+    if not anggota:
+        return jsonify({'success': False, 'message': 'Anggota tidak ditemukan atau tidak aktif'}), 404
+    today = date.today()
+    if Kunjungan.query.filter_by(anggota_id=anggota.id, tanggal=today).first():
+        return jsonify({'success': False, 'message': 'Kunjungan hari ini sudah tercatat', 'anggota': anggota.to_dict()}), 409
+    kunjungan = Kunjungan(anggota_id=anggota.id, tanggal=today)
+    db.session.add(kunjungan)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Kunjungan hari ini sudah tercatat'}), 409
+    return jsonify({'success': True, 'message': 'Kunjungan berhasil dicatat', 'anggota': anggota.to_dict(), 'waktu': kunjungan.waktu.strftime('%H:%M:%S')})
+
+@app.route('/api/laporan/kunjungan')
+@login_required
+def laporan_kunjungan():
+    start_date = request.args.get('start', '')
+    end_date = request.args.get('end', '')
+    query = Kunjungan.query.join(Anggota)
+    if start_date:
+        query = query.filter(Kunjungan.tanggal >= datetime.strptime(start_date, '%Y-%m-%d').date())
+    if end_date:
+        query = query.filter(Kunjungan.tanggal <= datetime.strptime(end_date, '%Y-%m-%d').date())
+    return jsonify([entry.to_dict() for entry in query.order_by(Kunjungan.waktu.desc()).all()])
 
 @app.route('/api/opac/buku', methods=['GET'])
 def opac_get_buku():
@@ -350,7 +679,10 @@ def opac_get_buku():
             Buku.isbn.contains(search)
         ))
     if kategori:
-        query = query.join(Rak).filter(Rak.kategori_ddc == kategori)
+        query = query.outerjoin(Rak).filter(or_(
+            Buku.kategori_buku == kategori,
+            and_(Buku.kategori_buku.is_(None), Rak.kategori_ddc == kategori)
+        ))
 
     pagination = query.order_by(Buku.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
     books = pagination.items
@@ -360,6 +692,8 @@ def opac_get_buku():
     return jsonify({
         'books': result,
         'total': pagination.total,
+        'catalog_total': Buku.query.count(),
+        'available_total': Buku.query.filter(Buku.stok_tersedia > 0).count(),
         'pages': pagination.pages,
         'page': page
     })
@@ -367,11 +701,15 @@ def opac_get_buku():
 @app.route('/api/opac/kategori', methods=['GET'])
 def opac_get_kategori():
     """Get categories for OPAC filter"""
-    categories = db.session.query(Rak.kategori_ddc).filter(
+    legacy_categories = db.session.query(Rak.kategori_ddc).filter(
         Rak.kategori_ddc != None,
         Rak.kategori_ddc != ''
     ).distinct().all()
-    return jsonify([c[0] for c in categories])
+    book_categories = db.session.query(Buku.kategori_buku).filter(
+        Buku.kategori_buku != None,
+        Buku.kategori_buku != ''
+    ).distinct().all()
+    return jsonify(sorted({category[0] for category in legacy_categories + book_categories}))
 
 # ===== DASHBOARD =====
 @app.route('/api/dashboard/stats')
@@ -421,7 +759,10 @@ def get_buku():
             Buku.isbn.contains(search)
         ))
     if kategori:
-        query = query.join(Rak).filter(Rak.kategori_ddc == kategori)
+        query = query.outerjoin(Rak).filter(or_(
+            Buku.kategori_buku == kategori,
+            and_(Buku.kategori_buku.is_(None), Rak.kategori_ddc == kategori)
+        ))
 
     pagination = query.order_by(Buku.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
     books = pagination.items
@@ -486,7 +827,11 @@ def create_buku():
         stok_tersedia=data.get('stok_tersedia', data.get('stok_total', 1)),
         rak_id=rak_id,
         deskripsi=data.get('deskripsi'),
-        cover_image=cover_image_filename
+        cover_image=cover_image_filename,
+        jenis_buku=data.get('jenis_buku'),
+        kategori_buku=data.get('kategori_buku'),
+        klasifikasi_ddc=data.get('klasifikasi_ddc'),
+        sumber_buku=data.get('sumber_buku')
     )
     db.session.add(buku)
     db.session.commit()
@@ -535,6 +880,10 @@ def update_buku(id):
     b.jumlah_halaman = data.get('jumlah_halaman', b.jumlah_halaman)
     b.stok_total = data.get('stok_total', b.stok_total)
     b.stok_tersedia = data.get('stok_tersedia', b.stok_tersedia)
+    b.jenis_buku = data.get('jenis_buku', b.jenis_buku)
+    b.kategori_buku = data.get('kategori_buku', b.kategori_buku)
+    b.klasifikasi_ddc = data.get('klasifikasi_ddc', b.klasifikasi_ddc)
+    b.sumber_buku = data.get('sumber_buku', b.sumber_buku)
     b.deskripsi = data.get('deskripsi', b.deskripsi)
     db.session.commit()
     return jsonify({'success': True, 'message': 'Buku berhasil diperbarui'})
@@ -551,6 +900,7 @@ def delete_buku(id):
     return jsonify({'success': True, 'message': 'Buku berhasil dihapus'})
 
 @app.route('/api/buku/<int:id>/barcode', methods=['GET'])
+@role_required('admin', 'petugas')
 def get_buku_barcode(id):
     b = Buku.query.get_or_404(id)
     code_text = b.isbn if b.isbn else f"B-{b.id:04d}"
@@ -711,6 +1061,24 @@ def update_anggota(id):
     a.status = data.get('status', a.status)
     db.session.commit()
     return jsonify({'success': True, 'message': 'Anggota berhasil diperbarui'})
+
+@app.route('/api/anggota/<int:id>/password', methods=['PUT'])
+@role_required('admin')
+def update_anggota_password(id):
+    anggota = Anggota.query.get_or_404(id)
+    data = request.get_json(silent=True) or {}
+    new_password = data.get('new_password') or ''
+    confirm_password = data.get('confirm_password') or ''
+    if len(new_password) < 8:
+        return jsonify({'success': False, 'message': 'Password baru minimal 8 karakter'}), 400
+    if new_password != confirm_password:
+        return jsonify({'success': False, 'message': 'Konfirmasi password baru tidak sama'}), 400
+    user = User.query.filter_by(anggota_id=anggota.id).first()
+    if not user:
+        return jsonify({'success': False, 'message': 'Akun login anggota tidak ditemukan'}), 404
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Password akun {anggota.nama} berhasil diperbarui'})
 
 @app.route('/api/anggota/<int:id>', methods=['DELETE'])
 @role_required('admin')
@@ -994,11 +1362,13 @@ def laporan_ringkasan():
         Anggota.nama, func.count(Transaksi.id).label('total')
     ).join(Transaksi).group_by(Anggota.id).order_by(func.count(Transaksi.id).desc()).limit(5).all()
 
+    category_name = func.coalesce(Buku.kategori_buku, Rak.kategori_ddc)
     category_stats = db.session.query(
-        Rak.kategori_ddc, func.count(Buku.id).label('total')
-    ).join(Buku, Buku.rak_id == Rak.id).group_by(Rak.kategori_ddc).all()
+        category_name, func.count(Buku.id).label('total')
+    ).outerjoin(Rak, Buku.rak_id == Rak.id).group_by(category_name).all()
 
     return jsonify({
+        'total_buku': Buku.query.count(),
         'monthly_borrowed': monthly_borrowed,
         'yearly_borrowed': yearly_borrowed,
         'total_returned': total_returned,
@@ -1212,6 +1582,7 @@ def import_anggota():
 
 # ===== BARCODE ENDPOINT =====
 @app.route('/api/barcode/<string:code>', methods=['GET'])
+@role_required('admin', 'petugas')
 def generate_barcode(code):
     try:
         # Use Code128 which supports alphanumeric
@@ -1271,7 +1642,7 @@ def reset_password():
 @app.cli.command("init-db")
 def init_db_command():
     with app.app_context():
-        db.create_all()
+        initialize_database()
         # Create default admin user if not exists
         admin = User.query.filter_by(username='admin').first()
         if not admin:
@@ -1284,7 +1655,7 @@ def init_db_command():
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        initialize_database()
         # Create default admin user if not exists
         admin = User.query.filter_by(username='admin').first()
         if not admin:

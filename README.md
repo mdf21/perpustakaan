@@ -4,22 +4,31 @@ Aplikasi perpustakaan profesional lengkap untuk sekolah, dibangun dengan Python 
 
 ## Fitur
 
-- **Dashboard**: Ringkasan statistik perpustakaan
-- **Manajemen Buku**: CRUD data buku dengan pencarian dan filter kategori
-- **Manajemen Anggota**: CRUD data anggota dengan status aktif/nonaktif
-- **Peminjaman**: Transaksi peminjaman dan pengembalian buku
-- **Laporan**: Ringkasan, buku populer, anggota aktif, dan laporan transaksi
+- **Layanan siswa** (`/opac`): Cari buku, pengarang, kategori DDC, ketersediaan, dan lokasi rak tanpa login
+- **Informasi perpustakaan** (`/informasi`): Sejarah, visi, misi, dan struktur organisasi yang dikelola petugas
+- **Absensi kunjungan** (`/kunjungan`): Pindai QR kartu anggota dengan kamera atau pemindai QR USB; satu kunjungan per anggota per hari
+- **Panel petugas**: Dashboard, CRUD buku/anggota/rak, master jenis buku/kategori/jurusan/kelas/DDC/sumber, peminjaman dan pengembalian, serta laporan transaksi dan kas denda
+- **Kartu anggota**: Cetak kartu siswa dengan QR bertanda tangan dari halaman Data Anggota
+- **Label buku**: Cetak barcode buku dari halaman Data Buku
 
 ## Instalasi & Menjalankan
 
 1. Install dependensi:
+
    ```bash
    pip install -r requirements.txt
    ```
 
 2. Jalankan aplikasi:
+
    ```bash
    python app.py
+   ```
+
+   Untuk deployment Gunicorn/Docker atau database yang sudah ada, jalankan inisialisasi skema satu kali sebelum server:
+
+   ```bash
+   flask --app app init-db
    ```
 
 3. Buka browser dan akses:
@@ -48,8 +57,9 @@ perpustakaan/
 
 ## Hak Akses
 
-- **Admin**: Akses penuh ke semua fitur
-- Username default: admin (diakses langsung dari browser)
+- **Siswa**: Katalog, informasi perpustakaan, dan absensi kunjungan tanpa login petugas
+- **Petugas/Admin**: Pengelolaan koleksi, anggota, rak, transaksi, laporan, informasi perpustakaan, dan kartu anggota
+- Akun awal: `admin` / `admin123`; segera ganti kredensial dan `SECRET_KEY` sebelum deployment publik
 
 ## Catatan
 
@@ -57,3 +67,4 @@ perpustakaan/
 - Maksimal pinjam: 3 buku per anggota
 - Durasi pinjam: 7 hari
 - Denda keterlambatan: Rp 1.000/hari
+- Lengkapi sejarah, visi, misi, dan struktur sekolah dari menu **Informasi Perpustakaan** agar tampil untuk siswa.

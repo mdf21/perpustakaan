@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kartu Anggota - {{ anggota.nama }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { min-height: 100vh; display: grid; place-items: center; background: #edf2ef; font-family: Arial, sans-serif; }
+        .member-card { width: min(100% - 32px, 560px); min-height: 320px; border: 1px solid #d7e2dc; background: #fff; display: grid; grid-template-columns: minmax(0, 1fr) 156px; gap: 20px; padding: 26px; align-items: center; }
+        .school-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid #e3ebe6; }
+        .school-logo, .school-logo-placeholder { width: 56px; height: 56px; flex: 0 0 56px; object-fit: contain; }
+        .school-logo-placeholder { display: grid; place-items: center; background: #e8f2ed; color: #176b55; font-size: 25px; }
+        .school-heading-text { min-width: 0; }
+        .school-name { color: #173d33; font-size: 18px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+        .card-brand { color: #176b55; text-transform: uppercase; font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-top: 5px; }
+        .member-details { min-width: 0; }
+        .member-name { font-size: 25px; font-weight: 700; overflow-wrap: anywhere; }
+        .member-meta { color: #52645c; font-size: 14px; }
+        .member-qr { width: 156px; height: 156px; object-fit: contain; }
+        .print-action { position: fixed; top: 18px; right: 18px; }
+        @media print { body { background: #fff; min-height: auto; display: block; } .member-card { margin: 30mm auto; print-color-adjust: exact; } .print-action { display: none; } }
+        @media (max-width: 440px) { .member-card { grid-template-columns: minmax(0, 1fr) 110px; gap: 12px; padding: 18px; } .school-logo, .school-logo-placeholder { width: 46px; height: 46px; flex-basis: 46px; } .member-qr { width: 110px; height: 110px; } .member-name { font-size: 20px; } }
+    </style>
+</head>
+<body>
+    <button class="btn btn-success print-action" onclick="window.print()"><i class="bi bi-printer"></i> Cetak Kartu</button>
+    <main class="member-card">
+        <header class="school-heading">
+            {% if info.get('logo_image') %}
+            <img class="school-logo" src="{{ url_for('static', filename='uploads/school-logos/' ~ info.get('logo_image')) }}" alt="Logo {{ info.get('nama_sekolah', 'Sekolah') }}">
+            {% else %}
+            <div class="school-logo-placeholder" aria-hidden="true"><i class="bi bi-building"></i></div>
+            {% endif %}
+            <div class="school-heading-text">
+                <div class="school-name">{{ info.get('nama_sekolah', 'Perpustakaan Sekolah') }}</div>
+                <div class="card-brand">Kartu Anggota Perpustakaan</div>
+            </div>
+        </header>
+        <div class="member-details">
+            <div class="member-name">{{ anggota.nama }}</div>
+            <div class="member-meta mt-3">NIS: <strong>{{ anggota.nis }}</strong></div>
+            <div class="member-meta">Kelas: {{ anggota.kelas }}</div>
+            <div class="member-meta">Jurusan: {{ anggota.jurusan or '-' }}</div>
+        </div>
+        <img class="member-qr" src="{{ url_for('get_anggota_qrcode', id=anggota.id) }}" alt="QR kartu anggota {{ anggota.nama }}">
+    </main>
+</body>
+</html>
