@@ -1,16 +1,22 @@
-version: "3.9"
+version: '3.8'
 
 services:
   web:
-    build: .
-    container_name: perpustakaan_web
-    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: perpustakaan_app
     ports:
-      - "6001:5000"
-    volumes:
-      - ./instance:/app/instance
-      - ./static/uploads:/app/static/uploads
+      # Port kiri (5000) adalah port yang diakses dari host. Anda bisa mengubahnya jika mau (misal "8080:5000")
+      - "5000:5000"
     environment:
-      - FLASK_APP=app.py
+      # Mengarahkan database SQLite ke folder /data yang di-mount sebagai volume persisten
+      - DATABASE_URL=sqlite:////app/data/perpustakaan.db
       - FLASK_DEBUG=False
-      - DATABASE_URL=sqlite:////app/instance/perpustakaan.db
+      - SECRET_KEY=kunci-rahasia-perpustakaan-ganti-saat-produksi
+    volumes:
+      # Mount folder data untuk database agar tidak hilang saat container direstart/rebuild
+      - ./data:/app/data
+      # Mount folder uploads untuk cover buku & logo sekolah
+      - ./static/uploads:/app/static/uploads
+    restart: unless-stopped
