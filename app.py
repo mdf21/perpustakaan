@@ -694,14 +694,18 @@ def kartu_anggota_page(id):
 def catat_kunjungan():
     data = request.get_json(silent=True) or {}
     token = data.get('qr_code', '').strip()
-    if not token:
-        return jsonify({'success': False, 'message': 'QR kartu anggota wajib dipindai'}), 400
-    serializer = URLSafeSerializer(app.config['SECRET_KEY'], salt='kartu-anggota')
-    try:
-        payload = serializer.loads(token)
-    except BadSignature:
-        return jsonify({'success': False, 'message': 'QR kartu tidak valid'}), 400
-    anggota = Anggota.query.filter_by(id=payload.get('anggota_id'), status='Aktif').first()
+    nis = data.get('nis', '').strip()
+    if token:
+        serializer = URLSafeSerializer(app.config['SECRET_KEY'], salt='kartu-anggota')
+        try:
+            payload = serializer.loads(token)
+        except BadSignature:
+            return jsonify({'success': False, 'message': 'QR kartu tidak valid'}), 400
+        anggota = Anggota.query.filter_by(id=payload.get('anggota_id'), status='Aktif').first()
+    elif nis:
+        anggota = Anggota.query.filter_by(nis=nis, status='Aktif').first()
+    else:
+        return jsonify({'success': False, 'message': 'Pindai QR atau masukkan kode kartu (NIS)'}), 400
     if not anggota:
         return jsonify({'success': False, 'message': 'Anggota tidak ditemukan atau tidak aktif'}), 404
     today = date.today()
