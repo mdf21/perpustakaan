@@ -237,7 +237,7 @@ function loadTransaksi() {
                         <td>${escapeHtml(t.judul_buku)}</td>
                         <td>${t.tanggal_pinjam}</td>
                         <td>${t.tanggal_kembali_seharusnya}</td>
-                        <td>${t.tanggal_kembali || '-'}</td>
+                        <td>${t.tanggal_dikembalikan || '-'}</td>
                         <td>${displayStatus}</td>
                         <td>Rp ${(t.denda || 0).toLocaleString('id-ID')}</td>
                         <td>
