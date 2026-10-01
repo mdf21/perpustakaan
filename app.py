@@ -1354,10 +1354,21 @@ def create_transaksi():
     if active_borrows >= MAX_PINJAM_PER_ANGGOTA:
         return jsonify({'success': False, 'message': f'Maksimal {MAX_PINJAM_PER_ANGGOTA} buku yang dapat dipinjam'})
 
-    tanggal_kembali_seharusnya = date.today() + timedelta(days=7)
+    try:
+        tanggal_pinjam = datetime.strptime(data.get('tanggal_pinjam') or date.today().isoformat(), '%Y-%m-%d').date()
+        tanggal_kembali_seharusnya = datetime.strptime(
+            data.get('tanggal_kembali_seharusnya') or (tanggal_pinjam + timedelta(days=7)).isoformat(),
+            '%Y-%m-%d'
+        ).date()
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Format tanggal tidak valid'}), 400
+    if tanggal_kembali_seharusnya < tanggal_pinjam:
+        return jsonify({'success': False, 'message': 'Jatuh tempo tidak boleh sebelum tanggal pinjam'}), 400
+
     transaksi = Transaksi(
         buku_id=data.get('buku_id'),
         anggota_id=data.get('anggota_id'),
+        tanggal_pinjam=tanggal_pinjam,
         tanggal_kembali_seharusnya=tanggal_kembali_seharusnya,
         catatan=data.get('catatan', '')
     )
@@ -1370,11 +1381,23 @@ def create_transaksi():
 @role_required('admin', 'petugas')
 def update_transaksi(id):
     t = Transaksi.query.get_or_404(id)
-    data = request.json
+    data = request.json or {}
     if t.status in [BUKU_DIKEMBALIKAN, BUKU_TERLAMBAT]:
         return jsonify({'success': False, 'message': 'Transaksi sudah selesai'})
     action = data.get('action')
-    if action == 'return':
+    if action == 'dates':
+        try:
+            tanggal_pinjam = datetime.strptime(data.get('tanggal_pinjam', ''), '%Y-%m-%d').date()
+            tanggal_kembali_seharusnya = datetime.strptime(data.get('tanggal_kembali_seharusnya', ''), '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Format tanggal tidak valid'}), 400
+        if tanggal_kembali_seharusnya < tanggal_pinjam:
+            return jsonify({'success': False, 'message': 'Jatuh tempo tidak boleh sebelum tanggal pinjam'}), 400
+        t.tanggal_pinjam = tanggal_pinjam
+        t.tanggal_kembali_seharusnya = tanggal_kembali_seharusnya
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Tanggal peminjaman berhasil diperbarui'})
+    elif action == 'return':
         t.tanggal_dikembalikan = date.today()
         t.status = BUKU_DIKEMBALIKAN
         

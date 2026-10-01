@@ -72,6 +72,16 @@
                         <select class="form-select" id="bukuId" required></select>
                         <div class="form-text text-muted" id="stokInfo"></div>
                     </div>
+                    <div class="row">
+                        <div class="col-sm-6 mb-3">
+                            <label class="form-label" for="tanggalPinjam">Tanggal Pinjam</label>
+                            <input class="form-control" type="date" id="tanggalPinjam" required>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <label class="form-label" for="tanggalJatuhTempo">Jatuh Tempo</label>
+                            <input class="form-control" type="date" id="tanggalJatuhTempo" required>
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">Catatan (Opsional)</label>
                         <textarea class="form-control" id="catatan" rows="2"></textarea>
@@ -81,6 +91,34 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
                 <button type="button" class="btn btn-primary" onclick="saveTransaksi()">Simpan</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="dateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Atur Tanggal Peminjaman</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="dateForm">
+                    <input type="hidden" id="dateTransactionId">
+                    <div class="mb-3">
+                        <label class="form-label" for="editTanggalPinjam">Tanggal Pinjam</label>
+                        <input class="form-control" type="date" id="editTanggalPinjam" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="editTanggalJatuhTempo">Jatuh Tempo</label>
+                        <input class="form-control" type="date" id="editTanggalJatuhTempo" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" onclick="saveTransactionDates()">Simpan Tanggal</button>
             </div>
         </div>
     </div>
@@ -203,7 +241,7 @@ function loadTransaksi() {
                         <td>${displayStatus}</td>
                         <td>Rp ${(t.denda || 0).toLocaleString('id-ID')}</td>
                         <td>
-                            ${t.status === 'Dipinjam' ? `<button class="btn btn-sm btn-success me-1" onclick="openReturnModal(${t.id})"><i class="bi bi-check-circle"></i> Kembali</button>` : ''}
+                            ${t.status === 'Dipinjam' ? `<button class="btn btn-sm btn-outline-primary me-1" onclick="openDateModal(${t.id})" title="Atur tanggal"><i class="bi bi-calendar-range"></i></button><button class="btn btn-sm btn-success me-1" onclick="openReturnModal(${t.id})"><i class="bi bi-check-circle"></i> Kembali</button>` : ''}
                             <button class="btn btn-sm btn-danger" onclick="confirmDelete(${t.id})"><i class="bi bi-trash"></i></button>
                         </td>
                     </tr>`;
@@ -231,17 +269,32 @@ function changePage(page) {
 
 function openPinjamModal() {
     document.getElementById('pinjamForm').reset();
+    const today = new Date();
+    document.getElementById('tanggalPinjam').value = localDateValue(today);
+    document.getElementById('tanggalJatuhTempo').value = localDateValue(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7));
     new bootstrap.Modal(document.getElementById('pinjamModal')).show();
+}
+
+function localDateValue(date) {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function saveTransaksi() {
     const data = {
         buku_id: parseInt(document.getElementById('bukuId').value),
         anggota_id: parseInt(document.getElementById('anggotaId').value),
+        tanggal_pinjam: document.getElementById('tanggalPinjam').value,
+        tanggal_kembali_seharusnya: document.getElementById('tanggalJatuhTempo').value,
         catatan: document.getElementById('catatan').value
     };
     if (!data.buku_id || !data.anggota_id) {
         alert('Pilih anggota dan buku terlebih dahulu');
+        return;
+    }
+    if (!data.tanggal_pinjam || !data.tanggal_kembali_seharusnya || data.tanggal_kembali_seharusnya < data.tanggal_pinjam) {
+        alert('Tanggal jatuh tempo tidak boleh sebelum tanggal pinjam');
         return;
     }
     fetch('/api/transaksi', {
@@ -259,6 +312,51 @@ function saveTransaksi() {
         } else {
             alert(result.message);
         }
+    });
+}
+
+function openDateModal(id) {
+    fetch(`/api/transaksi/${id}`)
+        .then(res => res.json())
+        .then(data => {
+            const transaction = data.transaksi;
+            if (!transaction) return;
+            document.getElementById('dateTransactionId').value = id;
+            document.getElementById('editTanggalPinjam').value = dateToInputValue(transaction.tanggal_pinjam);
+            document.getElementById('editTanggalJatuhTempo').value = dateToInputValue(transaction.tanggal_kembali_seharusnya);
+            new bootstrap.Modal(document.getElementById('dateModal')).show();
+        });
+}
+
+function dateToInputValue(dateText) {
+    const [day, month, year] = dateText.split('-');
+    return `${year}-${month}-${day}`;
+}
+
+function saveTransactionDates() {
+    const tanggalPinjam = document.getElementById('editTanggalPinjam').value;
+    const tanggalJatuhTempo = document.getElementById('editTanggalJatuhTempo').value;
+    if (!tanggalPinjam || !tanggalJatuhTempo || tanggalJatuhTempo < tanggalPinjam) {
+        alert('Tanggal jatuh tempo tidak boleh sebelum tanggal pinjam');
+        return;
+    }
+    const id = document.getElementById('dateTransactionId').value;
+    fetch(`/api/transaksi/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            action: 'dates',
+            tanggal_pinjam: tanggalPinjam,
+            tanggal_kembali_seharusnya: tanggalJatuhTempo
+        })
+    })
+    .then(res => res.json())
+    .then(result => {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('dateModal')).hide();
+            loadTransaksi();
+        }
+        alert(result.message);
     });
 }
 
