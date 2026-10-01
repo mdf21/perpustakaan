@@ -25,6 +25,10 @@
         .student-content .card:hover { transform: none; }
         .student-content .btn-primary { background: #176b55; border-color: #176b55; }
         .student-content .btn-primary:hover { background: #10513f; border-color: #10513f; }
+        .book-cover-frame { width: 100%; aspect-ratio: 3 / 4; max-height: 250px; display: grid; place-items: center; overflow: hidden; background: #e9efec; }
+        .book-cover { width: 100%; height: 100%; object-fit: contain; }
+        .book-cover-placeholder { color: #71847b; font-size: 2rem; }
+        .book-cover-thumb { display: block; width: auto; height: auto; max-width: 96px; max-height: 128px; object-fit: contain; }
         @media (max-width: 575.98px) { .student-shell { padding-top: 1.25rem; } .student-brand { font-size: 1.2rem; } }
     </style>
     {% block extra_css %}{% endblock %}

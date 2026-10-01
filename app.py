@@ -8,7 +8,7 @@ import barcode
 import qrcode
 import uuid
 from datetime import datetime, timedelta, date
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for, send_file
+from flask import Flask, abort, render_template, jsonify, request, session, redirect, url_for, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import or_, and_, func, inspect, text
@@ -28,10 +28,12 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'perpustakaan-secret-key-change-in-production')
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'covers')
 app.config['SCHOOL_LOGO_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads', 'school-logos')
+app.config['EBOOK_UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads', 'ebooks')
 
 os.makedirs(os.path.join(app.root_path, 'instance'), exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['SCHOOL_LOGO_FOLDER'], exist_ok=True)
+os.makedirs(app.config['EBOOK_UPLOAD_FOLDER'], exist_ok=True)
 
 CORS(app, resources={r"/api/*": {"origins": os.getenv('CORS_ORIGINS', '*')}}, supports_credentials=True)
 
@@ -130,6 +132,7 @@ class Buku(db.Model):
     rak_id = db.Column(db.Integer, db.ForeignKey('raks.id'))
     deskripsi = db.Column(db.Text)
     cover_image = db.Column(db.String(255))
+    ebook_file = db.Column(db.String(255))
     jenis_buku = db.Column(db.String(100))
     kategori_buku = db.Column(db.String(100))
     klasifikasi_ddc = db.Column(db.String(100))
@@ -161,7 +164,8 @@ class Buku(db.Model):
             'klasifikasi_ddc': self.klasifikasi_ddc or (self.rak.kategori_ddc if self.rak else None),
             'sumber_buku': self.sumber_buku,
             'deskripsi': self.deskripsi,
-            'cover_image': self.cover_image
+            'cover_image': os.path.basename(self.cover_image) if self.cover_image else None,
+            'ebook_available': bool(self.ebook_file)
         }
 
 class Anggota(db.Model):
@@ -358,13 +362,74 @@ def inject_school_branding():
 def initialize_database():
     db.create_all()
     book_columns = {column['name'] for column in inspect(db.engine).get_columns('buku')}
-    for column in ('jenis_buku', 'kategori_buku', 'klasifikasi_ddc', 'sumber_buku'):
+    for column in ('jenis_buku', 'kategori_buku', 'klasifikasi_ddc', 'sumber_buku', 'ebook_file'):
         if column not in book_columns:
-            db.session.execute(text(f'ALTER TABLE buku ADD COLUMN {column} VARCHAR(100)'))
+            column_type = 'VARCHAR(255)' if column == 'ebook_file' else 'VARCHAR(100)'
+            db.session.execute(text(f'ALTER TABLE buku ADD COLUMN {column} {column_type}'))
     info_columns = {column['name'] for column in inspect(db.engine).get_columns('perpustakaan_info')}
     if 'logo_image' not in info_columns:
         db.session.execute(text('ALTER TABLE perpustakaan_info ADD COLUMN logo_image VARCHAR(255)'))
     db.session.commit()
+
+def save_book_uploads(files):
+    specifications = {
+        'cover_image': (app.config['UPLOAD_FOLDER'], {'.png', '.jpg', '.jpeg', '.webp'}, 5 * 1024 * 1024),
+        'ebook_file': (app.config['EBOOK_UPLOAD_FOLDER'], {'.pdf'}, 50 * 1024 * 1024)
+    }
+    pending = {}
+    for field, (folder, extensions, max_size) in specifications.items():
+        uploaded = files.get(field)
+        if not uploaded or not uploaded.filename:
+            continue
+        extension = os.path.splitext(secure_filename(uploaded.filename))[1].lower()
+        if extension not in extensions:
+            file_types = 'PNG, JPG, atau WebP' if field == 'cover_image' else 'PDF'
+            raise ValueError(f'File {field} harus berformat {file_types}')
+        uploaded.stream.seek(0, os.SEEK_END)
+        file_size = uploaded.stream.tell()
+        uploaded.stream.seek(0)
+        if not file_size or file_size > max_size:
+            max_size_mb = max_size // (1024 * 1024)
+            raise ValueError(f'Ukuran {field} harus lebih dari 0 dan maksimal {max_size_mb} MB')
+        if field == 'cover_image':
+            try:
+                with Image.open(uploaded.stream) as image:
+                    if image.format not in {'PNG', 'JPEG', 'WEBP'}:
+                        raise ValueError('Format cover harus PNG, JPG, atau WebP')
+                    image.verify()
+            except (UnidentifiedImageError, OSError, SyntaxError) as error:
+                raise ValueError('File cover bukan gambar yang valid') from error
+            uploaded.stream.seek(0)
+        else:
+            if uploaded.stream.read(5) != b'%PDF-':
+                raise ValueError('File e-book bukan PDF yang valid')
+            uploaded.stream.seek(0)
+        filename = f'{uuid.uuid4().hex}{extension}'
+        pending[field] = (uploaded, folder, filename)
+
+    saved = {}
+    try:
+        for field, (uploaded, folder, filename) in pending.items():
+            os.makedirs(folder, exist_ok=True)
+            uploaded.save(os.path.join(folder, filename))
+            saved[field] = filename
+    except OSError as error:
+        remove_book_uploads(saved)
+        raise ValueError('File gagal disimpan. Periksa ruang penyimpanan aplikasi.') from error
+    return saved
+
+def remove_book_uploads(uploaded_files):
+    folders = {
+        'cover_image': app.config['UPLOAD_FOLDER'],
+        'ebook_file': app.config['EBOOK_UPLOAD_FOLDER']
+    }
+    for field, filename in uploaded_files.items():
+        path = os.path.join(folders[field], os.path.basename(filename))
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError:
+            app.logger.warning('Unable to remove an unused book upload')
 
 # ===== AUTH ROUTES =====
 @app.route('/login', methods=['GET', 'POST'])
@@ -671,7 +736,7 @@ def opac_get_buku():
     page = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 12, type=int), 50)
 
-    query = Buku.query.filter(Buku.stok_tersedia > 0)
+    query = Buku.query.filter(or_(Buku.stok_tersedia > 0, Buku.ebook_file.isnot(None)))
     if search:
         query = query.filter(or_(
             Buku.judul.contains(search),
@@ -681,7 +746,8 @@ def opac_get_buku():
     if kategori:
         query = query.outerjoin(Rak).filter(or_(
             Buku.kategori_buku == kategori,
-            and_(Buku.kategori_buku.is_(None), Rak.kategori_ddc == kategori)
+            Buku.klasifikasi_ddc == kategori,
+            Rak.kategori_ddc == kategori
         ))
 
     pagination = query.order_by(Buku.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
@@ -693,7 +759,7 @@ def opac_get_buku():
         'books': result,
         'total': pagination.total,
         'catalog_total': Buku.query.count(),
-        'available_total': Buku.query.filter(Buku.stok_tersedia > 0).count(),
+        'available_total': Buku.query.filter(or_(Buku.stok_tersedia > 0, Buku.ebook_file.isnot(None))).count(),
         'pages': pagination.pages,
         'page': page
     })
@@ -709,7 +775,30 @@ def opac_get_kategori():
         Buku.kategori_buku != None,
         Buku.kategori_buku != ''
     ).distinct().all()
-    return jsonify(sorted({category[0] for category in legacy_categories + book_categories}))
+    book_classifications = db.session.query(Buku.klasifikasi_ddc).filter(
+        Buku.klasifikasi_ddc != None,
+        Buku.klasifikasi_ddc != ''
+    ).distinct().all()
+    return jsonify(sorted({category[0] for category in legacy_categories + book_categories + book_classifications}))
+
+@app.route('/buku-digital/<int:id>')
+def buku_digital_page(id):
+    buku = Buku.query.get_or_404(id)
+    if not buku.ebook_file:
+        abort(404)
+    return render_template('ebook.html', buku=buku, user=get_current_user())
+
+@app.route('/api/opac/buku/<int:id>/ebook')
+def serve_ebook_pdf(id):
+    buku = Buku.query.get_or_404(id)
+    if not buku.ebook_file:
+        abort(404)
+    filename = os.path.basename(buku.ebook_file)
+    path = os.path.join(app.config['EBOOK_UPLOAD_FOLDER'], filename)
+    if not os.path.isfile(path):
+        abort(404)
+    download_name = f'{secure_filename(buku.judul) or f"buku-{buku.id}"}.pdf'
+    return send_file(path, mimetype='application/pdf', as_attachment=False, download_name=download_name, conditional=True)
 
 # ===== DASHBOARD =====
 @app.route('/api/dashboard/stats')
@@ -761,7 +850,8 @@ def get_buku():
     if kategori:
         query = query.outerjoin(Rak).filter(or_(
             Buku.kategori_buku == kategori,
-            and_(Buku.kategori_buku.is_(None), Rak.kategori_ddc == kategori)
+            Buku.klasifikasi_ddc == kategori,
+            Rak.kategori_ddc == kategori
         ))
 
     pagination = query.order_by(Buku.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
@@ -791,16 +881,10 @@ def create_buku():
         data = request.form
     if not data or not data.get('judul') or not data.get('pengarang'):
         return jsonify({'success': False, 'message': 'Judul dan pengarang wajib diisi'}), 400
-    
-    cover_image_filename = None
-    if 'cover_image' in request.files:
-        file = request.files['cover_image']
-        if file and file.filename != '':
-            filename = secure_filename(file.filename)
-            upload_dir = app.config['UPLOAD_FOLDER']
-            os.makedirs(upload_dir, exist_ok=True)
-            file.save(os.path.join(upload_dir, filename))
-            cover_image_filename = filename
+    try:
+        uploaded_files = save_book_uploads(request.files)
+    except ValueError as error:
+        return jsonify({'success': False, 'message': str(error)}), 400
 
     rak_id = data.get('rak_id')
     if not rak_id:
@@ -827,14 +911,20 @@ def create_buku():
         stok_tersedia=data.get('stok_tersedia', data.get('stok_total', 1)),
         rak_id=rak_id,
         deskripsi=data.get('deskripsi'),
-        cover_image=cover_image_filename,
+        cover_image=uploaded_files.get('cover_image'),
+        ebook_file=uploaded_files.get('ebook_file'),
         jenis_buku=data.get('jenis_buku'),
         kategori_buku=data.get('kategori_buku'),
         klasifikasi_ddc=data.get('klasifikasi_ddc'),
         sumber_buku=data.get('sumber_buku')
     )
     db.session.add(buku)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        remove_book_uploads(uploaded_files)
+        raise
     return jsonify({'success': True, 'message': 'Buku berhasil ditambahkan', 'id': buku.id})
 
 @app.route('/api/buku/<int:id>', methods=['PUT'])
@@ -847,6 +937,14 @@ def update_buku(id):
         data = request.form
     if not data or not data.get('judul') or not data.get('pengarang'):
         return jsonify({'success': False, 'message': 'Judul dan pengarang wajib diisi'}), 400
+    try:
+        uploaded_files = save_book_uploads(request.files)
+    except ValueError as error:
+        return jsonify({'success': False, 'message': str(error)}), 400
+    previous_files = {
+        'cover_image': b.cover_image,
+        'ebook_file': b.ebook_file
+    }
     
     rak_id = data.get('rak_id')
     if rak_id:
@@ -863,14 +961,10 @@ def update_buku(id):
         if rak:
             b.rak_id = rak.id
     
-    if 'cover_image' in request.files:
-        file = request.files['cover_image']
-        if file and file.filename != '':
-            filename = secure_filename(file.filename)
-            upload_dir = app.config['UPLOAD_FOLDER']
-            os.makedirs(upload_dir, exist_ok=True)
-            file.save(os.path.join(upload_dir, filename))
-            b.cover_image = filename
+    if uploaded_files.get('cover_image'):
+        b.cover_image = uploaded_files['cover_image']
+    if uploaded_files.get('ebook_file'):
+        b.ebook_file = uploaded_files['ebook_file']
 
     b.isbn = data.get('isbn', b.isbn)
     b.judul = data.get('judul', b.judul)
@@ -885,7 +979,17 @@ def update_buku(id):
     b.klasifikasi_ddc = data.get('klasifikasi_ddc', b.klasifikasi_ddc)
     b.sumber_buku = data.get('sumber_buku', b.sumber_buku)
     b.deskripsi = data.get('deskripsi', b.deskripsi)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        remove_book_uploads(uploaded_files)
+        raise
+    replaced_files = {
+        field: filename for field, filename in previous_files.items()
+        if uploaded_files.get(field) and uploaded_files[field] != filename
+    }
+    remove_book_uploads(replaced_files)
     return jsonify({'success': True, 'message': 'Buku berhasil diperbarui'})
 
 @app.route('/api/buku/<int:id>', methods=['DELETE'])
@@ -895,8 +999,10 @@ def delete_buku(id):
     has_transactions = Transaksi.query.filter_by(buku_id=id).first() is not None
     if has_transactions:
         return jsonify({'success': False, 'message': 'Tidak dapat menghapus buku yang memiliki riwayat transaksi'})
+    existing_files = {'cover_image': b.cover_image, 'ebook_file': b.ebook_file}
     db.session.delete(b)
     db.session.commit()
+    remove_book_uploads(existing_files)
     return jsonify({'success': True, 'message': 'Buku berhasil dihapus'})
 
 @app.route('/api/buku/<int:id>/barcode', methods=['GET'])

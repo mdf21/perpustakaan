@@ -92,6 +92,9 @@ function loadOpacBuku() {
                         <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
                             <div class="card h-100 book-card">
                                 <div class="card-body d-flex flex-column">
+                                    <div class="book-cover-frame mb-3">
+                                        ${b.cover_image ? `<img class="book-cover" src="/static/uploads/covers/${encodeURIComponent(b.cover_image)}" alt="Cover buku ${escapeHtml(b.judul)}" loading="lazy">` : '<div class="book-cover-placeholder" aria-hidden="true"><i class="bi bi-book"></i></div>'}
+                                    </div>
                                     <div class="mb-2">
                                         <span class="badge ${stokClass}">${escapeHtml(stokText)}</span>
                                         ${b.kategori_buku ? `<span class="badge bg-secondary ms-1">${escapeHtml(b.kategori_buku)}</span>` : ''}
@@ -102,9 +105,10 @@ function loadOpacBuku() {
                                     <p class="card-text text-muted small mb-1"><i class="bi bi-building me-1"></i>${escapeHtml(b.penerbit || '-')}</p>
                                     <p class="card-text text-muted small mb-2"><i class="bi bi-calendar me-1"></i>${b.tahun_terbit || '-'}</p>
                                     <p class="card-text text-muted small"><i class="bi bi-bookshelf me-1"></i>${escapeHtml(b.rak_nama || '-')}</p>
-                                    <button class="btn btn-sm btn-outline-primary mt-auto" onclick="showDetail(${b.id})">
-                                        <i class="bi bi-info-circle me-1"></i>Detail
-                                    </button>
+                                    <div class="d-flex flex-wrap gap-2 mt-auto">
+                                        <button class="btn btn-sm btn-outline-primary" onclick="showDetail(${b.id})"><i class="bi bi-info-circle me-1"></i>Detail</button>
+                                        ${b.ebook_available ? `<a class="btn btn-sm btn-success" href="/buku-digital/${b.id}"><i class="bi bi-book-half me-1"></i>Baca e-book</a>` : ''}
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -112,6 +112,20 @@
                         <div class="col-md-6 mb-3"><label class="form-label">Klasifikasi DDC</label><input class="form-control" id="klasifikasiDdc" list="klasifikasiDdcList"><datalist id="klasifikasiDdcList"></datalist></div>
                         <div class="col-md-6 mb-3"><label class="form-label">Sumber Buku</label><input class="form-control" id="sumberBuku" list="sumberBukuList"><datalist id="sumberBukuList"></datalist></div>
                     </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="coverImage" class="form-label">Foto cover buku</label>
+                            <input id="coverImage" class="form-control" type="file" accept="image/png,image/jpeg,image/webp">
+                            <div class="form-text">PNG, JPG, atau WebP; maksimal 5 MB.</div>
+                            <div id="coverPreview" class="book-cover-preview mt-2 text-muted small">Belum ada cover.</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="ebookFile" class="form-label">Buku digital (PDF)</label>
+                            <input id="ebookFile" class="form-control" type="file" accept="application/pdf,.pdf">
+                            <div class="form-text">PDF maksimal 50 MB.</div>
+                            <div id="ebookStatus" class="small text-muted mt-2">Belum ada e-book.</div>
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">Deskripsi</label>
                         <textarea class="form-control" id="deskripsi" rows="3"></textarea>
@@ -153,6 +167,11 @@ document.addEventListener('DOMContentLoaded', function() {
     loadBuku();
     loadKategori();
     loadReferensiBuku();
+    document.getElementById('coverImage').addEventListener('change', previewBookCover);
+    document.getElementById('ebookFile').addEventListener('change', function() {
+        const file = this.files[0];
+        document.getElementById('ebookStatus').textContent = file ? `File dipilih: ${file.name}` : 'Belum ada e-book.';
+    });
     document.getElementById('searchBuku').addEventListener('input', debounce(function() {
         currentPage = 1;
         loadBuku();
@@ -216,11 +235,29 @@ function openModal() {
     document.getElementById('bukuForm').reset();
     document.getElementById('bukuId').value = '';
     document.getElementById('modalTitle').textContent = 'Tambah Buku';
+    document.getElementById('coverPreview').textContent = 'Belum ada cover.';
+    document.getElementById('ebookStatus').textContent = 'Belum ada e-book.';
     new bootstrap.Modal(document.getElementById('bukuModal')).show();
+}
+
+function previewBookCover() {
+    const file = document.getElementById('coverImage').files[0];
+    const preview = document.getElementById('coverPreview');
+    if (!file) {
+        preview.textContent = 'Belum ada cover.';
+        return;
+    }
+    const image = document.createElement('img');
+    image.src = URL.createObjectURL(file);
+    image.alt = 'Preview cover buku';
+    image.className = 'book-cover-thumb';
+    preview.replaceChildren(image);
 }
 
 function editBuku(id) {
     const modal = new bootstrap.Modal(document.getElementById('bukuModal'));
+    document.getElementById('coverImage').value = '';
+    document.getElementById('ebookFile').value = '';
     fetch(`/api/buku/${id}`)
         .then(res => res.json())
         .then(data => {
@@ -241,6 +278,12 @@ function editBuku(id) {
             document.getElementById('sumberBuku').value = b.sumber_buku || '';
             document.getElementById('lokasiRak').value = b.lokasi_rak || '';
             document.getElementById('deskripsi').value = b.deskripsi || '';
+            document.getElementById('coverPreview').innerHTML = b.cover_image
+                ? `<img class="book-cover-thumb" src="/static/uploads/covers/${encodeURIComponent(b.cover_image)}" alt="Cover ${escapeHtml(b.judul)}">`
+                : 'Belum ada cover.';
+            document.getElementById('ebookStatus').innerHTML = b.ebook_available
+                ? `E-book sudah tersedia. <a href="/buku-digital/${b.id}" target="_blank" rel="noopener">Buka PDF</a>`
+                : 'Belum ada e-book.';
             document.getElementById('modalTitle').textContent = 'Edit Buku';
             modal.show();
         });
@@ -266,16 +309,24 @@ function saveBuku() {
         lokasi_rak: document.getElementById('lokasiRak').value,
         deskripsi: document.getElementById('deskripsi').value
     };
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => formData.append(key, value == null ? '' : value));
+    const coverImage = document.getElementById('coverImage').files[0];
+    const ebookFile = document.getElementById('ebookFile').files[0];
+    if (coverImage) formData.append('cover_image', coverImage);
+    if (ebookFile) formData.append('ebook_file', ebookFile);
     const method = id ? 'PUT' : 'POST';
     const url = id ? `/api/buku/${id}` : '/api/buku';
     fetch(url, {
         method: method,
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
+        body: formData
     })
     .then(res => res.json())
     .then(result => {
         if (result.success) {
+            document.getElementById('bukuForm').reset();
+            document.getElementById('coverPreview').textContent = 'Belum ada cover.';
+            document.getElementById('ebookStatus').textContent = 'Belum ada e-book.';
             bootstrap.Modal.getInstance(document.getElementById('bukuModal')).hide();
             loadBuku();
             alert(result.message);
