@@ -16,10 +16,17 @@
                     <option value="">Semua Kategori</option>
                 </select>
             </div>
-            <button class="btn btn-primary" onclick="openModal()">
-                <i class="bi bi-plus-circle me-1"></i> Tambah Buku
-            </button>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary" href="/api/buku/template"><i class="bi bi-file-earmark-arrow-down me-1"></i>Template Excel</a>
+                <button class="btn btn-outline-primary" type="button" onclick="document.getElementById('bukuExcelFile').click()"><i class="bi bi-upload me-1"></i>Import Excel</button>
+                <a class="btn btn-outline-success" href="/api/buku/export"><i class="bi bi-download me-1"></i>Unduh Data</a>
+                <button class="btn btn-primary" onclick="openModal()">
+                    <i class="bi bi-plus-circle me-1"></i> Tambah Buku
+                </button>
+                <input type="file" id="bukuExcelFile" accept=".xlsx" hidden>
+            </div>
         </div>
+        <div id="bukuExcelMessage" class="alert d-none mt-3 mb-0" role="status" aria-live="polite"></div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -167,6 +174,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadBuku();
     loadKategori();
     loadReferensiBuku();
+    document.getElementById('bukuExcelFile').addEventListener('change', importBukuExcel);
     document.getElementById('coverImage').addEventListener('change', previewBookCover);
     document.getElementById('ebookFile').addEventListener('change', function() {
         const file = this.files[0];
@@ -181,6 +189,30 @@ document.addEventListener('DOMContentLoaded', function() {
         loadBuku();
     });
 });
+
+async function importBukuExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const message = document.getElementById('bukuExcelMessage');
+    const formData = new FormData();
+    formData.append('file', file);
+    message.className = 'alert alert-info mt-3 mb-0';
+    message.textContent = 'Memproses file Excel...';
+    try {
+        const response = await fetch('/api/buku/import', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Impor buku gagal');
+        const rowErrors = (result.errors || []).map(item => `Baris ${item.baris}: ${item.pesan}`).join(' | ');
+        message.className = `alert ${result.skipped ? 'alert-warning' : 'alert-success'} mt-3 mb-0`;
+        message.textContent = rowErrors ? `${result.message}. ${rowErrors}` : result.message;
+        loadBuku();
+    } catch (error) {
+        message.className = 'alert alert-danger mt-3 mb-0';
+        message.textContent = error.message;
+    } finally {
+        event.target.value = '';
+    }
+}
 
 function loadBuku() {
     const search = document.getElementById('searchBuku').value;

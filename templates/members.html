@@ -16,10 +16,17 @@
                     <option value="">Semua Kelas</option>
                 </select>
             </div>
-            <button class="btn btn-primary" onclick="openModal()">
-                <i class="bi bi-plus-circle me-1"></i> Tambah Anggota
-            </button>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary" href="/api/anggota/template"><i class="bi bi-file-earmark-arrow-down me-1"></i>Template Excel</a>
+                <button class="btn btn-outline-primary" type="button" onclick="document.getElementById('anggotaExcelFile').click()"><i class="bi bi-upload me-1"></i>Import Excel</button>
+                <a class="btn btn-outline-success" href="/api/anggota/export"><i class="bi bi-download me-1"></i>Unduh Data</a>
+                <button class="btn btn-primary" onclick="openModal()">
+                    <i class="bi bi-plus-circle me-1"></i> Tambah Anggota
+                </button>
+                <input type="file" id="anggotaExcelFile" accept=".xlsx" hidden>
+            </div>
         </div>
+        <div id="anggotaExcelMessage" class="alert d-none mt-3 mb-0" role="status" aria-live="polite"></div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -166,6 +173,7 @@ const canResetMemberPassword = {{ can_reset_password|tojson }};
 document.addEventListener('DOMContentLoaded', function() {
     loadAnggota();
     loadKelas();
+    document.getElementById('anggotaExcelFile').addEventListener('change', importAnggotaExcel);
     document.getElementById('searchAnggota').addEventListener('input', debounce(function() {
         currentPage = 1;
         loadAnggota();
@@ -175,6 +183,30 @@ document.addEventListener('DOMContentLoaded', function() {
         loadAnggota();
     });
 });
+
+async function importAnggotaExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const message = document.getElementById('anggotaExcelMessage');
+    const formData = new FormData();
+    formData.append('file', file);
+    message.className = 'alert alert-info mt-3 mb-0';
+    message.textContent = 'Memproses file Excel...';
+    try {
+        const response = await fetch('/api/anggota/import', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Impor anggota gagal');
+        const rowErrors = (result.errors || []).map(item => `Baris ${item.baris}: ${item.pesan}`).join(' | ');
+        message.className = `alert ${result.skipped ? 'alert-warning' : 'alert-success'} mt-3 mb-0`;
+        message.textContent = rowErrors ? `${result.message}. ${rowErrors}` : result.message;
+        loadAnggota();
+    } catch (error) {
+        message.className = 'alert alert-danger mt-3 mb-0';
+        message.textContent = error.message;
+    } finally {
+        event.target.value = '';
+    }
+}
 
 function loadAnggota() {
     const search = document.getElementById('searchAnggota').value;

@@ -1613,108 +1613,288 @@ def notify_return_reminder():
     return jsonify({'success': True, 'notifications_sent': len(results), 'details': results})
 
 # ===== EXCEL EXPORT & IMPORT =====
+BUKU_EXCEL_HEADERS = [
+    'ISBN', 'Judul', 'Pengarang', 'Penerbit', 'Tahun Terbit', 'Jumlah Halaman',
+    'Stok Total', 'Stok Tersedia', 'Lokasi Rak', 'Kategori Buku',
+    'Klasifikasi DDC', 'Jenis Buku', 'Sumber Buku', 'Deskripsi'
+]
+ANGGOTA_EXCEL_HEADERS = [
+    'NIS', 'Nama', 'Kelas', 'Jenis Kelamin', 'No Telepon', 'Alamat', 'Status'
+]
+
+
+def _excel_download(sheet_name, headers, rows, filename, include_guide=False):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    for cell in ws[1]:
+        cell.font = openpyxl.styles.Font(bold=True)
+    format_until = max(ws.max_row, 101) if include_guide else ws.max_row
+    for index, header in enumerate(headers, start=1):
+        if header in ('ISBN', 'NIS', 'No Telepon'):
+            for row_index in range(2, format_until + 1):
+                ws.cell(row=row_index, column=index).number_format = '@'
+    for column in ws.columns:
+        column_letter = column[0].column_letter
+        ws.column_dimensions[column_letter].width = min(
+            max(max(len(str(cell.value or '')) for cell in column) + 2, 14), 40
+        )
+    if include_guide:
+        guide = wb.create_sheet('Panduan')
+        guide.append(['Petunjuk Pengisian'])
+        guide.append(['Isi data mulai baris kedua pada sheet ' + sheet_name + '.'])
+        guide.append(['Jangan mengubah nama kolom pada baris pertama.'])
+        guide.append(['Kolom dengan tanda * wajib diisi: ' + ', '.join(headers[:3]) + '.'])
+        guide.append(['Simpan file sebagai .xlsx sebelum diunggah.'])
+        guide.column_dimensions['A'].width = 90
+        guide['A1'].font = openpyxl.styles.Font(bold=True)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        download_name=filename,
+        as_attachment=True
+    )
+
+
+def _read_excel_upload():
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return None, (jsonify({'success': False, 'message': 'Pilih file Excel terlebih dahulu'}), 400)
+    if not file.filename.lower().endswith('.xlsx'):
+        return None, (jsonify({'success': False, 'message': 'Hanya file .xlsx yang didukung'}), 400)
+    try:
+        workbook = openpyxl.load_workbook(file, data_only=True, read_only=True)
+        worksheet = workbook.active
+        header_row = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True), ())
+        headers = {
+            str(value).strip().casefold(): index
+            for index, value in enumerate(header_row)
+            if value is not None and str(value).strip()
+        }
+        return (workbook, worksheet, headers), None
+    except Exception:
+        return None, (jsonify({'success': False, 'message': 'File Excel tidak dapat dibaca'}), 400)
+
+
+def _excel_value(row, headers, name):
+    index = headers.get(name.casefold())
+    return row[index] if index is not None and index < len(row) else None
+
+
+def _excel_text(value):
+    if value is None:
+        return ''
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _excel_integer(value, label, default=None):
+    if value is None or _excel_text(value) == '':
+        return default
+    try:
+        number = float(value)
+        if not number.is_integer():
+            raise ValueError
+        return int(number)
+    except (TypeError, ValueError):
+        raise ValueError(f'{label} harus berupa bilangan bulat')
+
+
+def _excel_import_result(imported, errors, entity):
+    skipped = len(errors)
+    message = f'{imported} {entity} berhasil ditambahkan'
+    if skipped:
+        message += f', {skipped} baris dilewati'
+    return jsonify({
+        'success': True,
+        'message': message,
+        'imported': imported,
+        'skipped': skipped,
+        'errors': errors[:20]
+    })
+
+
+@app.route('/api/buku/template', methods=['GET'])
+@role_required('admin', 'petugas')
+def template_buku():
+    return _excel_download('Data Buku', BUKU_EXCEL_HEADERS, [], 'template_buku.xlsx', True)
+
+
 @app.route('/api/buku/export', methods=['GET'])
 @role_required('admin', 'petugas')
 def export_buku():
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Data Buku"
-    headers = ['ID', 'ISBN', 'Judul', 'Pengarang', 'Penerbit', 'Tahun Terbit', 'Stok Total', 'Stok Tersedia', 'Rak ID']
-    ws.append(headers)
-    for b in Buku.query.all():
-        ws.append([b.id, b.isbn, b.judul, b.pengarang, b.penerbit, b.tahun_terbit, b.stok_total, b.stok_tersedia, b.rak_id])
-    
-    out = io.BytesIO()
-    wb.save(out)
-    out.seek(0)
-    return send_file(out, download_name='data_buku.xlsx', as_attachment=True)
+    rows = [[
+        book.isbn, book.judul, book.pengarang, book.penerbit, book.tahun_terbit,
+        book.jumlah_halaman, book.stok_total, book.stok_tersedia,
+        book.rak.nama_rak if book.rak else None, book.kategori_buku,
+        book.klasifikasi_ddc, book.jenis_buku, book.sumber_buku, book.deskripsi
+    ] for book in Buku.query.order_by(Buku.id).all()]
+    return _excel_download('Data Buku', BUKU_EXCEL_HEADERS, rows, 'data_buku.xlsx')
 
 @app.route('/api/buku/import', methods=['POST'])
 @role_required('admin', 'petugas')
 def import_buku():
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'No file uploaded'}), 400
-    file = request.files['file']
-    if not file.filename.endswith('.xlsx'):
-        return jsonify({'success': False, 'message': 'Hanya file .xlsx yang didukung'}), 400
-    
-    wb = openpyxl.load_workbook(file)
-    ws = wb.active
-    count = 0
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row[2] or not row[3]: # Judul & Pengarang wajib
+    loaded, error_response = _read_excel_upload()
+    if error_response:
+        return error_response
+    workbook, worksheet, headers = loaded
+    required = ['judul', 'pengarang']
+    if any(name not in headers for name in required):
+        workbook.close()
+        return jsonify({'success': False, 'message': 'Kolom Judul dan Pengarang wajib tersedia'}), 400
+
+    existing_isbns = {value for (value,) in db.session.query(Buku.isbn).filter(Buku.isbn.isnot(None)).all()}
+    seen_isbns = set()
+    pending = []
+    errors = []
+    for row_number, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
+        if not any(value is not None and str(value).strip() for value in row):
             continue
-        # Assuming format: ID, ISBN, Judul, Pengarang, Penerbit, Tahun, Stok Total, Stok Tersedia, Rak ID
-        b = Buku(
-            isbn=str(row[1]) if row[1] else None,
-            judul=str(row[2]),
-            pengarang=str(row[3]),
-            penerbit=str(row[4]) if len(row)>4 else None,
-            tahun_terbit=int(row[5]) if len(row)>5 and row[5] else None,
-            stok_total=int(row[6]) if len(row)>6 and row[6] else 1,
-            stok_tersedia=int(row[7]) if len(row)>7 and row[7] else 1,
-            rak_id=int(row[8]) if len(row)>8 and row[8] else None
-        )
-        db.session.add(b)
-        count += 1
-    db.session.commit()
-    return jsonify({'success': True, 'message': f'{count} buku berhasil diimport'})
+        try:
+            judul = _excel_text(_excel_value(row, headers, 'Judul'))
+            pengarang = _excel_text(_excel_value(row, headers, 'Pengarang'))
+            if not judul or not pengarang:
+                raise ValueError('Judul dan Pengarang wajib diisi')
+            isbn = _excel_text(_excel_value(row, headers, 'ISBN')) or None
+            if isbn and (isbn in existing_isbns or isbn in seen_isbns):
+                raise ValueError(f'ISBN {isbn} sudah terdaftar')
+            tahun = _excel_integer(_excel_value(row, headers, 'Tahun Terbit'), 'Tahun Terbit')
+            halaman = _excel_integer(_excel_value(row, headers, 'Jumlah Halaman'), 'Jumlah Halaman')
+            stok_total = _excel_integer(_excel_value(row, headers, 'Stok Total'), 'Stok Total', 1)
+            stok_tersedia = _excel_integer(_excel_value(row, headers, 'Stok Tersedia'), 'Stok Tersedia', stok_total)
+            if stok_total < 0 or stok_tersedia < 0 or stok_tersedia > stok_total:
+                raise ValueError('Stok harus >= 0 dan Stok Tersedia tidak boleh melebihi Stok Total')
+            lokasi = _excel_text(_excel_value(row, headers, 'Lokasi Rak'))
+            rak = Rak.query.filter_by(nama_rak=lokasi).first() if lokasi else None
+            if lokasi and not rak:
+                raise ValueError(f'Lokasi Rak "{lokasi}" tidak ditemukan')
+            pending.append(Buku(
+                isbn=isbn,
+                judul=judul,
+                pengarang=pengarang,
+                penerbit=_excel_text(_excel_value(row, headers, 'Penerbit')) or None,
+                tahun_terbit=tahun,
+                jumlah_halaman=halaman,
+                stok_total=stok_total,
+                stok_tersedia=stok_tersedia,
+                rak_id=rak.id if rak else None,
+                kategori_buku=_excel_text(_excel_value(row, headers, 'Kategori Buku')) or None,
+                klasifikasi_ddc=_excel_text(_excel_value(row, headers, 'Klasifikasi DDC')) or None,
+                jenis_buku=_excel_text(_excel_value(row, headers, 'Jenis Buku')) or None,
+                sumber_buku=_excel_text(_excel_value(row, headers, 'Sumber Buku')) or None,
+                deskripsi=_excel_text(_excel_value(row, headers, 'Deskripsi')) or None
+            ))
+            if isbn:
+                seen_isbns.add(isbn)
+        except ValueError as error:
+            errors.append({'baris': row_number, 'pesan': str(error)})
+    workbook.close()
+    try:
+        db.session.add_all(pending)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Impor dibatalkan karena ada ISBN yang duplikat'}), 409
+    return _excel_import_result(len(pending), errors, 'buku')
+
+
+@app.route('/api/anggota/template', methods=['GET'])
+@role_required('admin', 'petugas')
+def template_anggota():
+    return _excel_download('Data Anggota', ANGGOTA_EXCEL_HEADERS, [], 'template_anggota.xlsx', True)
 
 @app.route('/api/anggota/export', methods=['GET'])
 @role_required('admin', 'petugas')
 def export_anggota():
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Data Anggota"
-    headers = ['ID', 'NIS', 'Nama', 'Kelas', 'Jenis Kelamin', 'No Telepon', 'Alamat', 'Status']
-    ws.append(headers)
-    for a in Anggota.query.all():
-        ws.append([a.id, a.nis, a.nama, a.kelas, a.jenis_kelamin, a.no_telepon, a.alamat, a.status])
-    
-    out = io.BytesIO()
-    wb.save(out)
-    out.seek(0)
-    return send_file(out, download_name='data_anggota.xlsx', as_attachment=True)
+    rows = [[
+        member.nis, member.nama, member.kelas, member.jenis_kelamin,
+        member.no_telepon, member.alamat, member.status
+    ] for member in Anggota.query.order_by(Anggota.id).all()]
+    return _excel_download('Data Anggota', ANGGOTA_EXCEL_HEADERS, rows, 'data_anggota.xlsx')
 
 @app.route('/api/anggota/import', methods=['POST'])
 @role_required('admin', 'petugas')
 def import_anggota():
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'No file uploaded'}), 400
-    file = request.files['file']
-    if not file.filename.endswith('.xlsx'):
-        return jsonify({'success': False, 'message': 'Hanya file .xlsx yang didukung'}), 400
-    
-    wb = openpyxl.load_workbook(file)
-    ws = wb.active
-    count = 0
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row[1] or not row[2] or not row[3]: # NIS, Nama, Kelas wajib
+    loaded, error_response = _read_excel_upload()
+    if error_response:
+        return error_response
+    workbook, worksheet, headers = loaded
+    required = ['nis', 'nama', 'kelas']
+    if any(name not in headers for name in required):
+        workbook.close()
+        return jsonify({'success': False, 'message': 'Kolom NIS, Nama, dan Kelas wajib tersedia'}), 400
+
+    existing_nis = {value for (value,) in db.session.query(Anggota.nis).all()}
+    seen_nis = set()
+    pending = []
+    errors = []
+    for row_number, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
+        if not any(value is not None and str(value).strip() for value in row):
             continue
-        a = Anggota(
-            nis=str(row[1]),
-            nama=str(row[2]),
-            kelas=str(row[3]),
-            jenis_kelamin=str(row[4]) if len(row)>4 else None,
-            no_telepon=str(row[5]) if len(row)>5 else None,
-            alamat=str(row[6]) if len(row)>6 else None,
-            status=str(row[7]) if len(row)>7 and row[7] else 'Aktif'
-        )
-        db.session.add(a)
-        
-        # Auto-create user account
-        user = User(
-            username=str(row[1]),
-            nama=str(row[2]),
-            role='anggota',
-            status='aktif',
-            anggota_id=a.id
-        )
-        user.set_password(str(row[1]))
-        db.session.add(user)
-        count += 1
-    db.session.commit()
-    return jsonify({'success': True, 'message': f'{count} anggota berhasil diimport'})
+        try:
+            nis = _excel_text(_excel_value(row, headers, 'NIS'))
+            nama = _excel_text(_excel_value(row, headers, 'Nama'))
+            kelas = _excel_text(_excel_value(row, headers, 'Kelas'))
+            if not nis or not nama or not kelas:
+                raise ValueError('NIS, Nama, dan Kelas wajib diisi')
+            if nis in existing_nis or nis in seen_nis:
+                raise ValueError(f'NIS {nis} sudah terdaftar')
+            if User.query.filter_by(username=nis).first():
+                raise ValueError(f'Username {nis} sudah digunakan')
+            jenis_kelamin = _excel_text(_excel_value(row, headers, 'Jenis Kelamin'))
+            if jenis_kelamin:
+                normalized_gender = jenis_kelamin.casefold()
+                if normalized_gender in ('l', 'laki-laki', 'laki laki'):
+                    jenis_kelamin = 'L'
+                elif normalized_gender in ('p', 'perempuan'):
+                    jenis_kelamin = 'P'
+                else:
+                    raise ValueError('Jenis Kelamin harus L atau P')
+            status = _excel_text(_excel_value(row, headers, 'Status')) or 'Aktif'
+            if status.casefold() not in ('aktif', 'nonaktif'):
+                raise ValueError('Status harus Aktif atau Nonaktif')
+            pending.append({
+                'nis': nis,
+                'nama': nama,
+                'kelas': kelas,
+                'jenis_kelamin': jenis_kelamin or None,
+                'no_telepon': _excel_text(_excel_value(row, headers, 'No Telepon')) or None,
+                'alamat': _excel_text(_excel_value(row, headers, 'Alamat')) or None,
+                'status': 'Aktif' if status.casefold() == 'aktif' else 'Nonaktif'
+            })
+            seen_nis.add(nis)
+        except ValueError as error:
+            errors.append({'baris': row_number, 'pesan': str(error)})
+    workbook.close()
+    try:
+        for data in pending:
+            anggota = Anggota(**data)
+            db.session.add(anggota)
+            db.session.flush()
+            user = User(
+                username=data['nis'],
+                nama=data['nama'],
+                role='anggota',
+                status='aktif' if data['status'] == 'Aktif' else 'nonaktif',
+                anggota_id=anggota.id
+            )
+            user.set_password(data['nis'])
+            db.session.add(user)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Impor dibatalkan karena ada NIS atau username yang duplikat'}), 409
+    return _excel_import_result(len(pending), errors, 'anggota')
 
 # ===== BARCODE ENDPOINT =====
 @app.route('/api/barcode/<string:code>', methods=['GET'])
