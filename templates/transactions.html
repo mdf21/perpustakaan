@@ -72,6 +72,16 @@
                         <select class="form-select" id="bukuId" required></select>
                         <div class="form-text text-muted" id="stokInfo"></div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="barcodeBuku">Barcode Buku</label>
+                        <div class="input-group">
+                            <input class="form-control" id="barcodeBuku" autocomplete="off" placeholder="Scan barcode atau ketik ISBN/kode buku">
+                            <button class="btn btn-outline-primary" type="button" id="cariBarcode" title="Cari barcode"><i class="bi bi-search"></i></button>
+                            <button class="btn btn-outline-secondary" type="button" id="kameraBarcode" title="Pindai dengan kamera"><i class="bi bi-camera"></i></button>
+                        </div>
+                        <div class="form-text" id="barcodeMessage" role="status" aria-live="polite">Gunakan scanner USB, atau kamera jika browser mendukung.</div>
+                        <video id="barcodePreview" class="w-100 mt-2 d-none" playsinline></video>
+                    </div>
                     <div class="row">
                         <div class="col-sm-6 mb-3">
                             <label class="form-label" for="tanggalPinjam">Tanggal Pinjam</label>
@@ -171,6 +181,8 @@
 {% block extra_js %}
 <script>
 let currentPage = 1;
+let barcodeStream;
+let barcodeScanning = false;
 
 document.addEventListener('DOMContentLoaded', function() {
     loadTransaksi();
@@ -183,6 +195,16 @@ document.addEventListener('DOMContentLoaded', function() {
         currentPage = 1;
         loadTransaksi();
     });
+    document.getElementById('bukuId').addEventListener('change', updateStokInfo);
+    document.getElementById('barcodeBuku').addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            cariBukuBarcode();
+        }
+    });
+    document.getElementById('cariBarcode').addEventListener('click', cariBukuBarcode);
+    document.getElementById('kameraBarcode').addEventListener('click', scanBarcodeDenganKamera);
+    document.getElementById('pinjamModal').addEventListener('hidden.bs.modal', stopBarcodeCamera);
 });
 
 function loadOptions() {
@@ -203,11 +225,103 @@ function loadOptions() {
             data.books.filter(b => b.stok > 0).forEach(b => {
                 select.innerHTML += `<option value="${b.id}" data-stok="${b.stok}">${escapeHtml(b.judul)} (Stok: ${b.stok})</option>`;
             });
-            document.getElementById('bukuId').addEventListener('change', function() {
-                const option = this.options[this.selectedIndex];
-                document.getElementById('stokInfo').textContent = option.value ? `Stok tersedia: ${option.dataset.stok}` : '';
-            });
         });
+}
+
+function updateStokInfo() {
+    const select = document.getElementById('bukuId');
+    const option = select.options[select.selectedIndex];
+    document.getElementById('stokInfo').textContent = option && option.value ? `Stok tersedia: ${option.dataset.stok}` : '';
+}
+
+async function cariBukuBarcode() {
+    const input = document.getElementById('barcodeBuku');
+    const message = document.getElementById('barcodeMessage');
+    const code = input.value.trim();
+    if (!code) {
+        message.className = 'form-text text-danger';
+        message.textContent = 'Masukkan atau scan barcode buku terlebih dahulu.';
+        input.focus();
+        return;
+    }
+
+    message.className = 'form-text text-muted';
+    message.textContent = 'Mencari buku...';
+    try {
+        const response = await fetch(`/api/buku/scan/${encodeURIComponent(code)}`);
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Buku tidak ditemukan.');
+
+        const book = result.buku;
+        const select = document.getElementById('bukuId');
+        let option = [...select.options].find(item => item.value === String(book.id));
+        if (!option) {
+            option = document.createElement('option');
+            option.value = book.id;
+            option.dataset.stok = book.stok;
+            option.textContent = `${book.judul} (Stok: ${book.stok})`;
+            select.append(option);
+        }
+        select.value = String(book.id);
+        updateStokInfo();
+        if (book.stok > 0) {
+            message.className = 'form-text text-success';
+            message.textContent = `Buku ditemukan: ${book.judul}.`;
+        } else {
+            message.className = 'form-text text-danger';
+            message.textContent = `${book.judul} ditemukan, tetapi stok sedang habis.`;
+        }
+    } catch (error) {
+        message.className = 'form-text text-danger';
+        message.textContent = error.message || 'Gagal mencari barcode buku.';
+    }
+    input.focus();
+}
+
+async function scanBarcodeDenganKamera() {
+    const message = document.getElementById('barcodeMessage');
+    const preview = document.getElementById('barcodePreview');
+    if (!('BarcodeDetector' in window)) {
+        message.className = 'form-text text-danger';
+        message.textContent = 'Pemindaian kamera tidak didukung browser ini. Gunakan scanner USB atau ketik kode barcode.';
+        return;
+    }
+    try {
+        const formats = await BarcodeDetector.getSupportedFormats();
+        const supportedFormats = ['code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e'].filter(format => formats.includes(format));
+        if (!supportedFormats.length) throw new Error('Browser tidak mendukung format barcode buku. Gunakan scanner USB.');
+        barcodeStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}});
+        preview.srcObject = barcodeStream;
+        preview.classList.remove('d-none');
+        await preview.play();
+        const detector = new BarcodeDetector({formats: supportedFormats});
+        barcodeScanning = true;
+        message.className = 'form-text text-muted';
+        message.textContent = 'Arahkan kamera ke barcode buku.';
+        while (barcodeScanning) {
+            const codes = await detector.detect(preview);
+            if (codes.length) {
+                document.getElementById('barcodeBuku').value = codes[0].rawValue;
+                stopBarcodeCamera();
+                await cariBukuBarcode();
+                return;
+            }
+            await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+    } catch (error) {
+        message.className = 'form-text text-danger';
+        message.textContent = error.message || 'Kamera tidak dapat dibuka. Izinkan akses kamera atau gunakan scanner USB.';
+        stopBarcodeCamera();
+    }
+}
+
+function stopBarcodeCamera() {
+    barcodeScanning = false;
+    if (barcodeStream) barcodeStream.getTracks().forEach(track => track.stop());
+    barcodeStream = null;
+    const preview = document.getElementById('barcodePreview');
+    preview.srcObject = null;
+    preview.classList.add('d-none');
 }
 
 function loadTransaksi() {
@@ -269,6 +383,9 @@ function changePage(page) {
 
 function openPinjamModal() {
     document.getElementById('pinjamForm').reset();
+    document.getElementById('barcodeMessage').className = 'form-text';
+    document.getElementById('barcodeMessage').textContent = 'Gunakan scanner USB, atau kamera jika browser mendukung.';
+    document.getElementById('stokInfo').textContent = '';
     const today = new Date();
     document.getElementById('tanggalPinjam').value = localDateValue(today);
     document.getElementById('tanggalJatuhTempo').value = localDateValue(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7));
