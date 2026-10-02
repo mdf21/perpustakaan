@@ -48,7 +48,6 @@ DENDA_PER_HARI = 1000
 MAX_PINJAM_PER_ANGGOTA = 3
 REFERENSI_TYPES = {
     'jenis_buku': 'Jenis Buku',
-    'jurusan': 'Jurusan',
     'kategori_buku': 'Kategori Buku',
     'kelas': 'Kelas',
     'klasifikasi_ddc': 'Klasifikasi DDC',
@@ -174,7 +173,6 @@ class Anggota(db.Model):
     nis = db.Column(db.String(50), unique=True, nullable=False)
     nama = db.Column(db.String(150), nullable=False)
     kelas = db.Column(db.String(50), nullable=False)
-    jurusan = db.Column(db.String(100))
     jenis_kelamin = db.Column(db.String(20))
     no_telepon = db.Column(db.String(20))
     alamat = db.Column(db.Text)
@@ -192,7 +190,6 @@ class Anggota(db.Model):
             'nis': self.nis,
             'nama': self.nama,
             'kelas': self.kelas,
-            'jurusan': self.jurusan,
             'jenis_kelamin': self.jenis_kelamin,
             'no_telepon': self.no_telepon,
             'alamat': self.alamat,
@@ -369,6 +366,15 @@ def initialize_database():
     info_columns = {column['name'] for column in inspect(db.engine).get_columns('perpustakaan_info')}
     if 'logo_image' not in info_columns:
         db.session.execute(text('ALTER TABLE perpustakaan_info ADD COLUMN logo_image VARCHAR(255)'))
+
+    anggota_columns = {column['name'] for column in inspect(db.engine).get_columns('anggota')}
+    if 'jurusan' in anggota_columns:
+        try:
+            db.session.execute(text('ALTER TABLE anggota DROP COLUMN jurusan'))
+        except Exception:
+            db.session.rollback()
+            raise RuntimeError('Migrasi database jurusan gagal. Pastikan SQLite mendukung ALTER TABLE DROP COLUMN.')
+
     db.session.commit()
 
 def save_book_uploads(files):
@@ -1131,7 +1137,6 @@ def create_anggota():
         nis=data.get('nis'),
         nama=data.get('nama'),
         kelas=data.get('kelas'),
-        jurusan=data.get('jurusan'),
         jenis_kelamin=data.get('jenis_kelamin'),
         no_telepon=data.get('no_telepon'),
         alamat=data.get('alamat'),
@@ -1164,7 +1169,6 @@ def update_anggota(id):
     a.nis = data.get('nis', a.nis)
     a.nama = data.get('nama', a.nama)
     a.kelas = data.get('kelas', a.kelas)
-    a.jurusan = data.get('jurusan', a.jurusan)
     a.jenis_kelamin = data.get('jenis_kelamin', a.jenis_kelamin)
     a.no_telepon = data.get('no_telepon', a.no_telepon)
     a.alamat = data.get('alamat', a.alamat)
@@ -1662,10 +1666,10 @@ def export_anggota():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Data Anggota"
-    headers = ['ID', 'NIS', 'Nama', 'Kelas', 'Jurusan', 'Jenis Kelamin', 'No Telepon', 'Alamat', 'Status']
+    headers = ['ID', 'NIS', 'Nama', 'Kelas', 'Jenis Kelamin', 'No Telepon', 'Alamat', 'Status']
     ws.append(headers)
     for a in Anggota.query.all():
-        ws.append([a.id, a.nis, a.nama, a.kelas, a.jurusan, a.jenis_kelamin, a.no_telepon, a.alamat, a.status])
+        ws.append([a.id, a.nis, a.nama, a.kelas, a.jenis_kelamin, a.no_telepon, a.alamat, a.status])
     
     out = io.BytesIO()
     wb.save(out)
@@ -1691,11 +1695,10 @@ def import_anggota():
             nis=str(row[1]),
             nama=str(row[2]),
             kelas=str(row[3]),
-            jurusan=str(row[4]) if len(row)>4 else None,
-            jenis_kelamin=str(row[5]) if len(row)>5 else None,
-            no_telepon=str(row[6]) if len(row)>6 else None,
-            alamat=str(row[7]) if len(row)>7 else None,
-            status=str(row[8]) if len(row)>8 and row[8] else 'Aktif'
+            jenis_kelamin=str(row[4]) if len(row)>4 else None,
+            no_telepon=str(row[5]) if len(row)>5 else None,
+            alamat=str(row[6]) if len(row)>6 else None,
+            status=str(row[7]) if len(row)>7 and row[7] else 'Aktif'
         )
         db.session.add(a)
         

@@ -29,7 +29,6 @@
                         <th>NIS</th>
                         <th>Nama</th>
                         <th>Kelas</th>
-                        <th>Jurusan</th>
                         <th>JK</th>
                         <th>Telepon</th>
                         <th>Status</th>
@@ -37,7 +36,7 @@
                     </tr>
                 </thead>
                 <tbody id="anggotaTable">
-                    <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -70,17 +69,12 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-4 mb-3">
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">Kelas</label>
                             <input type="text" class="form-control" id="kelas" required list="kelasList">
                             <datalist id="kelasList"></datalist>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Jurusan</label>
-                            <input class="form-control" id="jurusan" list="jurusanList" placeholder="Pilih atau ketik jurusan">
-                            <datalist id="jurusanList"></datalist>
-                        </div>
-                        <div class="col-md-4 mb-3">
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">Jenis Kelamin</label>
                             <select class="form-select" id="jenisKelamin">
                                 <option value="">Pilih</option>
@@ -194,7 +188,7 @@ function loadAnggota() {
             const tbody = document.getElementById('anggotaTable');
             tbody.innerHTML = '';
             if (data.anggota.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Tidak ada data anggota</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Tidak ada data anggota</td></tr>';
             } else {
                 data.anggota.forEach(a => {
                     const statusBadge = a.status === 'Aktif' ? 'bg-success' : 'bg-danger';
@@ -202,7 +196,6 @@ function loadAnggota() {
                         <td><strong>${escapeHtml(a.nis)}</strong></td>
                         <td>${escapeHtml(a.nama)}</td>
                         <td><strong>${escapeHtml(a.kelas)}</strong></td>
-                        <td>${escapeHtml(a.jurusan || '-')}</td>
                         <td>${escapeHtml(a.jenis_kelamin || '-')}</td>
                         <td>${escapeHtml(a.no_telepon || '-')}</td>
                         <td><span class="badge ${statusBadge}">${escapeHtml(a.status)}</span></td>
@@ -253,7 +246,6 @@ function editAnggota(id) {
             document.getElementById('nis').value = a.nis;
             document.getElementById('nama').value = a.nama;
             document.getElementById('kelas').value = a.kelas;
-            document.getElementById('jurusan').value = a.jurusan || '';
             document.getElementById('jenisKelamin').value = a.jenis_kelamin || '';
             document.getElementById('noTelepon').value = a.no_telepon || '';
             document.getElementById('alamat').value = a.alamat || '';
@@ -269,7 +261,6 @@ function saveAnggota() {
         nis: document.getElementById('nis').value,
         nama: document.getElementById('nama').value,
         kelas: document.getElementById('kelas').value,
-        jurusan: document.getElementById('jurusan').value,
         jenis_kelamin: document.getElementById('jenisKelamin').value,
         no_telepon: document.getElementById('noTelepon').value,
         alamat: document.getElementById('alamat').value,
@@ -352,9 +343,8 @@ function loadKelas() {
     fetch('/api/kelas')
     Promise.all([
         fetch('/api/kelas').then(res => res.json()),
-        fetch('/api/referensi/kelas').then(res => res.json()),
-        fetch('/api/referensi/jurusan').then(res => res.json())
-    ]).then(([memberClasses, referenceClasses, majors]) => {
+        fetch('/api/referensi/kelas').then(res => res.json())
+    ]).then(([memberClasses, referenceClasses]) => {
         const select = document.getElementById('filterKelas');
         const datalist = document.getElementById('kelasList');
         const currentVal = select.value;
@@ -365,7 +355,6 @@ function loadKelas() {
             select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
             datalist.innerHTML += `<option value="${escapeHtml(c)}"></option>`;
         });
-        document.getElementById('jurusanList').innerHTML = majors.map(item => `<option value="${escapeHtml(item.nama)}"></option>`).join('');
         select.value = currentVal;
     });
 }

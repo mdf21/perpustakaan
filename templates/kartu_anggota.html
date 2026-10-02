@@ -42,7 +42,6 @@
             <div class="member-name">{{ anggota.nama }}</div>
             <div class="member-meta mt-3">NIS: <strong>{{ anggota.nis }}</strong></div>
             <div class="member-meta">Kelas: {{ anggota.kelas }}</div>
-            <div class="member-meta">Jurusan: {{ anggota.jurusan or '-' }}</div>
         </div>
         <img class="member-qr" src="{{ url_for('get_anggota_qrcode', id=anggota.id) }}" alt="QR kartu anggota {{ anggota.nama }}">
     </main>
