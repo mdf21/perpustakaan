@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kartu Anggota - Cetak Massal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            background: #edf2ef;
+            font-family: Arial, sans-serif;
+        }
+        .print-action {
+            position: fixed;
+            top: 18px;
+            right: 18px;
+            z-index: 10;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            padding: 24px;
+        }
+        .member-card {
+            width: 100%;
+            min-height: 280px;
+            border: 1px solid #d7e2dc;
+            background: #fff;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 132px;
+            gap: 18px;
+            padding: 22px;
+            align-items: center;
+            box-sizing: border-box;
+            break-inside: avoid;
+        }
+        .school-heading {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid #e3ebe6;
+            min-width: 0;
+        }
+        .school-logo, .school-logo-placeholder {
+            width: 52px;
+            height: 52px;
+            flex: 0 0 52px;
+            object-fit: contain;
+        }
+        .school-logo-placeholder {
+            display: grid;
+            place-items: center;
+            background: #e8f2ed;
+            color: #176b55;
+            font-size: 22px;
+        }
+        .school-heading-text {
+            min-width: 0;
+        }
+        .school-name {
+            color: #173d33;
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+        .card-brand {
+            color: #176b55;
+            text-transform: uppercase;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+        .member-details {
+            min-width: 0;
+        }
+        .member-name {
+            font-size: 22px;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+        .member-meta {
+            color: #52645c;
+            font-size: 13px;
+        }
+        .member-qr {
+            width: 132px;
+            height: 132px;
+            object-fit: contain;
+        }
+        @media print {
+            body {
+                background: #fff;
+            }
+            .print-action {
+                display: none;
+            }
+            .card-grid {
+                display: block;
+                padding: 0;
+            }
+            .member-card {
+                margin: 8mm auto;
+                width: min(100% - 12mm, 560px);
+                print-color-adjust: exact;
+            }
+        }
+        @media (max-width: 500px) {
+            .card-grid {
+                grid-template-columns: 1fr;
+                padding: 14px;
+            }
+            .member-card {
+                grid-template-columns: minmax(0, 1fr) 110px;
+                gap: 12px;
+                padding: 18px;
+            }
+            .member-qr {
+                width: 110px;
+                height: 110px;
+            }
+            .member-name {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="btn btn-success print-action" onclick="window.print()"><i class="bi bi-printer"></i> Cetak Kartu</button>
+    <main class="card-grid">
+        {% for anggota in anggota_list %}
+        <article class="member-card">
+            <header class="school-heading">
+                {% if info.get('logo_image') %}
+                <img class="school-logo" src="{{ url_for('static', filename='uploads/school-logos/' ~ info.get('logo_image')) }}" alt="Logo {{ info.get('nama_sekolah', 'Sekolah') }}">
+                {% else %}
+                <div class="school-logo-placeholder" aria-hidden="true"><i class="bi bi-building"></i></div>
+                {% endif %}
+                <div class="school-heading-text">
+                    <div class="school-name">{{ info.get('nama_sekolah', 'Perpustakaan Sekolah') }}</div>
+                    <div class="card-brand">Kartu Anggota Perpustakaan</div>
+                </div>
+            </header>
+            <div class="member-details">
+                <div class="member-name">{{ anggota.nama }}</div>
+                <div class="member-meta mt-3">NIS: <strong>{{ anggota.nis }}</strong></div>
+                <div class="member-meta">Kelas: {{ anggota.kelas }}</div>
+            </div>
+            <img class="member-qr" src="{{ url_for('get_anggota_qrcode', id=anggota.id) }}" alt="QR kartu anggota {{ anggota.nama }}">
+        </article>
+        {% endfor %}
+    </main>
+</body>
+</html>

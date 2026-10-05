@@ -20,6 +20,9 @@
                 <a class="btn btn-outline-secondary" href="/api/anggota/template"><i class="bi bi-file-earmark-arrow-down me-1"></i>Template Excel</a>
                 <button class="btn btn-outline-primary" type="button" onclick="document.getElementById('anggotaExcelFile').click()"><i class="bi bi-upload me-1"></i>Import Excel</button>
                 <a class="btn btn-outline-success" href="/api/anggota/export"><i class="bi bi-download me-1"></i>Unduh Data</a>
+                <button class="btn btn-success" type="button" id="bulkPrintBtn" onclick="printSelectedAnggota()">
+                    <i class="bi bi-printer me-1"></i> Cetak Masal
+                </button>
                 <button class="btn btn-primary" onclick="openModal()">
                     <i class="bi bi-plus-circle me-1"></i> Tambah Anggota
                 </button>
@@ -33,6 +36,9 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th class="no-print" style="width: 42px;">
+                            <input class="form-check-input" type="checkbox" id="selectAllAnggota" title="Pilih semua anggota" aria-label="Pilih semua anggota">
+                        </th>
                         <th>NIS</th>
                         <th>Nama</th>
                         <th>Kelas</th>
@@ -169,6 +175,7 @@
 <script>
 let currentPage = 1;
 const canResetMemberPassword = {{ can_reset_password|tojson }};
+const selectedMemberIds = new Set();
 
 document.addEventListener('DOMContentLoaded', function() {
     loadAnggota();
@@ -181,6 +188,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('filterKelas').addEventListener('change', function() {
         currentPage = 1;
         loadAnggota();
+    });
+    document.getElementById('selectAllAnggota').addEventListener('change', function(event) {
+        const checked = event.target.checked;
+        document.querySelectorAll('.member-select').forEach(checkbox => {
+            checkbox.checked = checked;
+            toggleMemberSelection(Number(checkbox.value), checked);
+        });
     });
 });
 
@@ -208,6 +222,42 @@ async function importAnggotaExcel(event) {
     }
 }
 
+function toggleMemberSelection(memberId, checked) {
+    if (checked) {
+        selectedMemberIds.add(memberId);
+    } else {
+        selectedMemberIds.delete(memberId);
+    }
+    updateBulkPrintButton();
+}
+
+function updateBulkPrintButton() {
+    const bulkPrintBtn = document.getElementById('bulkPrintBtn');
+    if (!bulkPrintBtn) return;
+    if (selectedMemberIds.size > 0) {
+        bulkPrintBtn.innerHTML = `<i class="bi bi-printer me-1"></i> Cetak Masal (${selectedMemberIds.size})`;
+    } else {
+        bulkPrintBtn.innerHTML = `<i class="bi bi-printer me-1"></i> Cetak Masal`;
+    }
+}
+
+function printSelectedAnggota() {
+    const params = new URLSearchParams();
+    const selectedIds = [...selectedMemberIds];
+    const search = document.getElementById('searchAnggota').value;
+    const kelas = document.getElementById('filterKelas').value;
+
+    if (selectedIds.length > 0) {
+        params.set('ids', selectedIds.join(','));
+    } else {
+        params.set('all', '1');
+        if (search) params.set('search', search);
+        if (kelas) params.set('kelas', kelas);
+    }
+
+    window.open(`/kartu-anggota/print?${params.toString()}`, '_blank', 'noopener');
+}
+
 function loadAnggota() {
     const search = document.getElementById('searchAnggota').value;
     const kelas = document.getElementById('filterKelas').value;
@@ -219,12 +269,18 @@ function loadAnggota() {
         .then(data => {
             const tbody = document.getElementById('anggotaTable');
             tbody.innerHTML = '';
+            const selectAllCheckbox = document.getElementById('selectAllAnggota');
             if (data.anggota.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Tidak ada data anggota</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Tidak ada data anggota</td></tr>';
+                selectAllCheckbox.checked = false;
             } else {
                 data.anggota.forEach(a => {
                     const statusBadge = a.status === 'Aktif' ? 'bg-success' : 'bg-danger';
+                    const isSelected = selectedMemberIds.has(a.id);
                     tbody.innerHTML += `<tr>
+                        <td class="no-print">
+                            <input class="form-check-input member-select" type="checkbox" value="${a.id}" ${isSelected ? 'checked' : ''} onchange="toggleMemberSelection(${a.id}, this.checked)">
+                        </td>
                         <td><strong>${escapeHtml(a.nis)}</strong></td>
                         <td>${escapeHtml(a.nama)}</td>
                         <td><strong>${escapeHtml(a.kelas)}</strong></td>
@@ -239,8 +295,10 @@ function loadAnggota() {
                         </td>
                     </tr>`;
                 });
+                selectAllCheckbox.checked = document.querySelectorAll('.member-select').length > 0 && [...document.querySelectorAll('.member-select')].every(cb => cb.checked);
             }
             renderPagination(data.page, data.pages, data.total);
+            updateBulkPrintButton();
         });
 }
 

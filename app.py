@@ -696,6 +696,45 @@ def kartu_anggota_page(id):
     info = PerpustakaanInfo.query.first()
     return render_template('kartu_anggota.html', anggota=anggota, info=info.to_dict() if info else {})
 
+@app.route('/kartu-anggota/print')
+@role_required('admin', 'petugas')
+def kartu_anggota_print_page():
+    member_ids = request.args.get('ids', '').strip()
+    print_all = request.args.get('all', '').lower() in {'1', 'true', 'yes'}
+    info = PerpustakaanInfo.query.first()
+
+    if member_ids:
+        parsed_ids = []
+        for raw_id in member_ids.split(','):
+            try:
+                parsed_ids.append(int(raw_id.strip()))
+            except ValueError:
+                continue
+        parsed_ids = list(dict.fromkeys(parsed_ids))
+        if not parsed_ids:
+            abort(400)
+        anggota_list = Anggota.query.filter(Anggota.id.in_(parsed_ids)).order_by(Anggota.nama).all()
+    elif print_all:
+        search = request.args.get('search', '')
+        kelas = request.args.get('kelas', '')
+        query = Anggota.query
+        if search:
+            query = query.filter(or_(
+                Anggota.nama.contains(search),
+                Anggota.nis.contains(search),
+                Anggota.kelas.contains(search)
+            ))
+        if kelas:
+            query = query.filter(Anggota.kelas == kelas)
+        anggota_list = query.order_by(Anggota.nama).all()
+    else:
+        abort(400)
+
+    if not anggota_list:
+        abort(404)
+
+    return render_template('kartu_anggota_massal.html', anggota_list=anggota_list, info=info.to_dict() if info else {})
+
 @app.route('/api/kunjungan/scan', methods=['POST'])
 def catat_kunjungan():
     data = request.get_json(silent=True) or {}
