@@ -28,4 +28,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 5000
 
 # Script CMD menjalankan inisialisasi database lalu menjalankan gunicorn
-CMD ["sh", "-c", "flask --app app init-db && gunicorn --workers 3 --bind 0.0.0.0:5000 app:app"]
+CMD ["sh", "-c", "flask --app app init-db && gunicorn --workers 3 --timeout 300 --bind 0.0.0.0:5000 app:app"]
