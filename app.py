@@ -1874,6 +1874,7 @@ def import_anggota():
         return jsonify({'success': False, 'message': 'Kolom NIS, Nama, dan Kelas wajib tersedia'}), 400
 
     existing_nis = {value for (value,) in db.session.query(Anggota.nis).all()}
+    existing_usernames = {value for (value,) in db.session.query(User.username).all()}
     seen_nis = set()
     pending = []
     errors = []
@@ -1888,7 +1889,7 @@ def import_anggota():
                 raise ValueError('NIS, Nama, dan Kelas wajib diisi')
             if nis in existing_nis or nis in seen_nis:
                 raise ValueError(f'NIS {nis} sudah terdaftar')
-            if User.query.filter_by(username=nis).first():
+            if nis in existing_usernames:
                 raise ValueError(f'Username {nis} sudah digunakan')
             jenis_kelamin = _excel_text(_excel_value(row, headers, 'Jenis Kelamin'))
             if jenis_kelamin:
@@ -1916,10 +1917,11 @@ def import_anggota():
             errors.append({'baris': row_number, 'pesan': str(error)})
     workbook.close()
     try:
-        for data in pending:
-            anggota = Anggota(**data)
-            db.session.add(anggota)
-            db.session.flush()
+        anggota_list = [Anggota(**data) for data in pending]
+        db.session.add_all(anggota_list)
+        db.session.flush()
+        user_list = []
+        for data, anggota in zip(pending, anggota_list):
             user = User(
                 username=data['nis'],
                 nama=data['nama'],
@@ -1928,7 +1930,8 @@ def import_anggota():
                 anggota_id=anggota.id
             )
             user.set_password(data['nis'])
-            db.session.add(user)
+            user_list.append(user)
+        db.session.add_all(user_list)
         db.session.commit()
     except IntegrityError:
         db.session.rollback()

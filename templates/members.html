@@ -208,15 +208,23 @@ async function importAnggotaExcel(event) {
     message.textContent = 'Memproses file Excel...';
     try {
         const response = await fetch('/api/anggota/import', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.message || 'Impor anggota gagal');
+        const contentType = response.headers.get('content-type') || '';
+        const result = contentType.includes('application/json') ? await response.json() : null;
+        if (!response.ok || !result?.success) {
+            throw new Error(result?.message || `Server gagal memproses file (HTTP ${response.status}).`);
+        }
         const rowErrors = (result.errors || []).map(item => `Baris ${item.baris}: ${item.pesan}`).join(' | ');
         message.className = `alert ${result.skipped ? 'alert-warning' : 'alert-success'} mt-3 mb-0`;
         message.textContent = rowErrors ? `${result.message}. ${rowErrors}` : result.message;
         loadAnggota();
     } catch (error) {
         message.className = 'alert alert-danger mt-3 mb-0';
-        message.textContent = error.message;
+        if (error instanceof TypeError) {
+            console.error('Koneksi gagal saat mengimpor anggota:', error);
+            message.textContent = 'Tidak dapat terhubung ke server. Periksa koneksi internet dan pastikan aplikasi masih berjalan, lalu coba lagi.';
+        } else {
+            message.textContent = error.message || 'Impor anggota gagal.';
+        }
     } finally {
         event.target.value = '';
     }
