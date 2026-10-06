@@ -34,7 +34,7 @@
             box-sizing: border-box;
             width: 62mm;
             height: 32mm;
-            padding: 2mm 3mm;
+            padding: 1.5mm 2.5mm;
             border: 1px solid #cbd3d9;
             display: flex;
             flex-direction: column;
@@ -44,10 +44,48 @@
             text-align: center;
             break-inside: avoid;
         }
+        .school-heading {
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5mm;
+            width: 100%;
+            height: 7mm;
+            min-height: 7mm;
+            margin-bottom: 0.5mm;
+        }
+        .school-logo,
+        .school-logo-placeholder {
+            box-sizing: border-box;
+            width: 6mm;
+            height: 6mm;
+            flex: 0 0 6mm;
+            object-fit: contain;
+        }
+        .school-logo-placeholder {
+            display: grid;
+            place-items: center;
+            border: 1px solid #087b50;
+            border-radius: 50%;
+            color: #087b50;
+            font-size: 7pt;
+            font-weight: 700;
+        }
+        .school-name {
+            max-width: calc(100% - 8mm);
+            color: #173d33;
+            font-size: 7pt;
+            font-weight: 700;
+            line-height: 1.1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .book-title {
             max-width: 100%;
-            margin-bottom: 1mm;
-            font-size: 9pt;
+            margin-bottom: 0.5mm;
+            font-size: 8pt;
             font-weight: 700;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -56,11 +94,12 @@
         .barcode-image {
             display: block;
             width: 100%;
-            height: 15mm;
+            height: 13mm;
+            flex: 0 0 13mm;
             object-fit: contain;
         }
         .book-code {
-            margin-top: 1mm;
+            margin-top: 0.5mm;
             font-size: 8pt;
             letter-spacing: .3px;
         }
@@ -96,8 +135,16 @@
         {% for buku in buku_list %}
         {% set code_text = buku.isbn if buku.isbn else 'B-%04d'|format(buku.id) %}
         <article class="barcode-label">
+            <header class="school-heading">
+                {% if info.get('logo_image') %}
+                <img class="school-logo" src="{{ url_for('static', filename='uploads/school-logos/' ~ info.get('logo_image')) }}" alt="Logo {{ info.get('nama_sekolah', 'Sekolah') }}">
+                {% else %}
+                <span class="school-logo-placeholder" aria-hidden="true">P</span>
+                {% endif %}
+                <div class="school-name" title="{{ info.get('nama_sekolah', 'Perpustakaan Sekolah') }}">{{ info.get('nama_sekolah', 'Perpustakaan Sekolah') }}</div>
+            </header>
             <div class="book-title" title="{{ buku.judul }}">{{ buku.judul }}</div>
-            <img class="barcode-image" src="{{ url_for('get_buku_barcode', id=buku.id) }}" alt="Barcode {{ buku.judul }}">
+            <img class="barcode-image" src="{{ url_for('get_buku_barcode', id=buku.id, hide_text=1) }}" alt="Barcode {{ buku.judul }}">
             <div class="book-code">{{ code_text }}</div>
         </article>
         {% endfor %}

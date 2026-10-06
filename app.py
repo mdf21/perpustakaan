@@ -1062,28 +1062,33 @@ def get_buku_barcode(id):
     try:
         CODE = barcode.get_barcode_class('code128')
         rv = io.BytesIO()
-        CODE(code_text, writer=ImageWriter()).write(rv)
+        options = {'write_text': False} if request.args.get('hide_text') == '1' else None
+        CODE(code_text, writer=ImageWriter()).write(rv, options=options)
         rv.seek(0)
         return send_file(rv, mimetype='image/png', as_attachment=False, download_name=f'barcode_{code_text}.png')
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/buku/barcode/print')
+@app.route('/buku/<int:id>/barcode/print')
 @role_required('admin', 'petugas')
-def print_buku_barcodes():
-    raw_ids = request.args.get('ids', '').strip()
-    if not raw_ids:
-        abort(400)
+def print_buku_barcodes(id=None):
+    if id is not None:
+        book_ids = [id]
+    else:
+        raw_ids = request.args.get('ids', '').strip()
+        if not raw_ids:
+            abort(400)
 
-    book_ids = []
-    for raw_id in raw_ids.split(','):
-        try:
-            book_ids.append(int(raw_id.strip()))
-        except ValueError:
-            continue
-    book_ids = list(dict.fromkeys(book_ids))
-    if not book_ids:
-        abort(400)
+        book_ids = []
+        for raw_id in raw_ids.split(','):
+            try:
+                book_ids.append(int(raw_id.strip()))
+            except ValueError:
+                continue
+        book_ids = list(dict.fromkeys(book_ids))
+        if not book_ids:
+            abort(400)
 
     books_by_id = {
         book.id: book
@@ -1093,7 +1098,12 @@ def print_buku_barcodes():
     if not buku_list:
         abort(404)
 
-    return render_template('barcode_buku_massal.html', buku_list=buku_list)
+    info = PerpustakaanInfo.query.first()
+    return render_template(
+        'barcode_buku_massal.html',
+        buku_list=buku_list,
+        info=info.to_dict() if info else {'nama_sekolah': 'Perpustakaan Sekolah', 'logo_image': None}
+    )
 
 @app.route('/api/buku/scan/<string:kode>', methods=['GET'])
 @login_required

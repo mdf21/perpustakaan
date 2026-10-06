@@ -257,7 +257,7 @@ function loadBuku() {
                         <td><span class="badge ${b.stok > 0 ? 'bg-success' : 'bg-danger'}">${b.stok}</span></td>
                         <td>${escapeHtml(b.lokasi_rak || '-')}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning me-1" onclick="editBuku(${b.id})"><i class="bi bi-pencil"></i></button> <a href="/api/buku/${b.id}/barcode" target="_blank" class="btn btn-sm btn-info me-1" title="Cetak Barcode"><i class="bi bi-upc-scan"></i></a>
+                            <button class="btn btn-sm btn-warning me-1" onclick="editBuku(${b.id})"><i class="bi bi-pencil"></i></button> <a href="/buku/${b.id}/barcode/print" target="_blank" rel="noopener" class="btn btn-sm btn-info me-1" title="Cetak Barcode"><i class="bi bi-upc-scan"></i></a>
                             <button class="btn btn-sm btn-danger" onclick="confirmDelete(${b.id})"><i class="bi bi-trash"></i></button>
                         </td>
                     </tr>`;
