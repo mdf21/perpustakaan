@@ -20,6 +20,9 @@
                 <a class="btn btn-outline-secondary" href="/api/buku/template"><i class="bi bi-file-earmark-arrow-down me-1"></i>Template Excel</a>
                 <button class="btn btn-outline-primary" type="button" onclick="document.getElementById('bukuExcelFile').click()"><i class="bi bi-upload me-1"></i>Import Excel</button>
                 <a class="btn btn-outline-success" href="/api/buku/export"><i class="bi bi-download me-1"></i>Unduh Data</a>
+                <button class="btn btn-outline-info" type="button" id="bulkBarcodeBtn" onclick="printSelectedBuku()" disabled>
+                    <i class="bi bi-printer me-1"></i> Cetak Barcode
+                </button>
                 <button class="btn btn-primary" onclick="openModal()">
                     <i class="bi bi-plus-circle me-1"></i> Tambah Buku
                 </button>
@@ -33,6 +36,9 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th class="no-print" style="width: 42px;">
+                            <input class="form-check-input" type="checkbox" id="selectAllBuku" title="Pilih semua buku di halaman ini" aria-label="Pilih semua buku di halaman ini">
+                        </th>
                         <th>Kode</th>
                         <th>Judul</th>
                         <th>Penulis</th>
@@ -43,7 +49,7 @@
                     </tr>
                 </thead>
                 <tbody id="bukuTable">
-                    <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -169,6 +175,7 @@
 {% block extra_js %}
 <script>
 let currentPage = 1;
+const selectedBukuIds = new Set();
 
 document.addEventListener('DOMContentLoaded', function() {
     loadBuku();
@@ -187,6 +194,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('filterKategori').addEventListener('change', function() {
         currentPage = 1;
         loadBuku();
+    });
+    document.getElementById('selectAllBuku').addEventListener('change', function(event) {
+        const checked = event.target.checked;
+        document.querySelectorAll('.book-select').forEach(checkbox => {
+            checkbox.checked = checked;
+            toggleBukuSelection(Number(checkbox.value), checked);
+        });
     });
 });
 
@@ -225,11 +239,17 @@ function loadBuku() {
         .then(data => {
             const tbody = document.getElementById('bukuTable');
             tbody.innerHTML = '';
+            const selectAllCheckbox = document.getElementById('selectAllBuku');
             if (data.books.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Tidak ada data buku</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Tidak ada data buku</td></tr>';
+                selectAllCheckbox.checked = false;
             } else {
                 data.books.forEach(b => {
+                    const isSelected = selectedBukuIds.has(b.id);
                     tbody.innerHTML += `<tr>
+                        <td class="no-print">
+                            <input class="form-check-input book-select" type="checkbox" value="${b.id}" ${isSelected ? 'checked' : ''} onchange="toggleBukuSelection(${b.id}, this.checked)">
+                        </td>
                         <td><strong>${escapeHtml(b.isbn || '-')}</strong></td>
                         <td>${escapeHtml(b.judul)}</td>
                         <td>${escapeHtml(b.pengarang)}</td>
@@ -242,9 +262,35 @@ function loadBuku() {
                         </td>
                     </tr>`;
                 });
+                selectAllCheckbox.checked = document.querySelectorAll('.book-select').length > 0
+                    && [...document.querySelectorAll('.book-select')].every(checkbox => checkbox.checked);
             }
             renderPagination(data.page, data.pages, data.total);
+            updateBulkBarcodeButton();
         });
+}
+
+function toggleBukuSelection(bookId, checked) {
+    if (checked) {
+        selectedBukuIds.add(bookId);
+    } else {
+        selectedBukuIds.delete(bookId);
+    }
+    updateBulkBarcodeButton();
+}
+
+function updateBulkBarcodeButton() {
+    const button = document.getElementById('bulkBarcodeBtn');
+    button.disabled = selectedBukuIds.size === 0;
+    button.innerHTML = selectedBukuIds.size > 0
+        ? `<i class="bi bi-printer me-1"></i> Cetak Barcode (${selectedBukuIds.size})`
+        : '<i class="bi bi-printer me-1"></i> Cetak Barcode';
+}
+
+function printSelectedBuku() {
+    if (selectedBukuIds.size === 0) return;
+    const params = new URLSearchParams({ ids: [...selectedBukuIds].join(',') });
+    window.open(`/buku/barcode/print?${params.toString()}`, '_blank', 'noopener');
 }
 
 function renderPagination(page, pages, total) {

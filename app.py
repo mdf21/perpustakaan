@@ -1068,6 +1068,33 @@ def get_buku_barcode(id):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/buku/barcode/print')
+@role_required('admin', 'petugas')
+def print_buku_barcodes():
+    raw_ids = request.args.get('ids', '').strip()
+    if not raw_ids:
+        abort(400)
+
+    book_ids = []
+    for raw_id in raw_ids.split(','):
+        try:
+            book_ids.append(int(raw_id.strip()))
+        except ValueError:
+            continue
+    book_ids = list(dict.fromkeys(book_ids))
+    if not book_ids:
+        abort(400)
+
+    books_by_id = {
+        book.id: book
+        for book in Buku.query.filter(Buku.id.in_(book_ids)).all()
+    }
+    buku_list = [books_by_id[book_id] for book_id in book_ids if book_id in books_by_id]
+    if not buku_list:
+        abort(404)
+
+    return render_template('barcode_buku_massal.html', buku_list=buku_list)
+
 @app.route('/api/buku/scan/<string:kode>', methods=['GET'])
 @login_required
 def scan_buku(kode):

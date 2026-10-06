@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cetak Barcode Buku</title>
+    <style>
+        body {
+            margin: 0;
+            color: #17212b;
+            font-family: Arial, sans-serif;
+        }
+        .print-action {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            padding: 10px 16px;
+            border: 0;
+            border-radius: 6px;
+            background: #087b50;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .label-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 62mm);
+            grid-auto-rows: 32mm;
+            gap: 1mm;
+            justify-content: center;
+            padding: 10mm;
+        }
+        .barcode-label {
+            box-sizing: border-box;
+            width: 62mm;
+            height: 32mm;
+            padding: 2mm 3mm;
+            border: 1px solid #cbd3d9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            text-align: center;
+            break-inside: avoid;
+        }
+        .book-title {
+            max-width: 100%;
+            margin-bottom: 1mm;
+            font-size: 9pt;
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .barcode-image {
+            display: block;
+            width: 100%;
+            height: 15mm;
+            object-fit: contain;
+        }
+        .book-code {
+            margin-top: 1mm;
+            font-size: 8pt;
+            letter-spacing: .3px;
+        }
+        @media print {
+            @page {
+                size: A4;
+                margin: 8mm;
+            }
+            .print-action {
+                display: none;
+            }
+            .label-grid {
+                padding: 0;
+                gap: 1mm;
+                grid-template-columns: repeat(3, 62mm);
+                grid-auto-rows: 32mm;
+            }
+            .barcode-label {
+                border-color: #adb5bd;
+            }
+        }
+        @media screen and (max-width: 650px) {
+            .label-grid {
+                grid-template-columns: repeat(auto-fit, 62mm);
+                padding-top: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="print-action" type="button" onclick="window.print()">Cetak Barcode ({{ buku_list|length }})</button>
+    <main class="label-grid">
+        {% for buku in buku_list %}
+        {% set code_text = buku.isbn if buku.isbn else 'B-%04d'|format(buku.id) %}
+        <article class="barcode-label">
+            <div class="book-title" title="{{ buku.judul }}">{{ buku.judul }}</div>
+            <img class="barcode-image" src="{{ url_for('get_buku_barcode', id=buku.id) }}" alt="Barcode {{ buku.judul }}">
+            <div class="book-code">{{ code_text }}</div>
+        </article>
+        {% endfor %}
+    </main>
+</body>
+</html>
