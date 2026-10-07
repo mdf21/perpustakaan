@@ -1,5 +1,8 @@
 import os
 import io
+import json
+import base64
+import binascii
 import string
 import random
 import requests
@@ -7,6 +10,8 @@ import openpyxl
 import barcode
 import qrcode
 import uuid
+import math
+import hashlib
 from datetime import datetime, timedelta, date
 from flask import Flask, abort, render_template, jsonify, request, session, redirect, url_for, send_file
 from flask_sqlalchemy import SQLAlchemy
@@ -26,6 +31,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True
 }
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'perpustakaan-secret-key-change-in-production')
+app.config['MAX_CONTENT_LENGTH'] = 256 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'covers')
 app.config['SCHOOL_LOGO_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads', 'school-logos')
 app.config['EBOOK_UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads', 'ebooks')
@@ -66,6 +72,12 @@ def internal_error(error):
     if request.path.startswith('/api/'):
         return jsonify({'success': False, 'message': 'Terjadi kesalahan server'}), 500
     return render_template('dashboard.html', current_date=datetime.now().strftime('%d %B %Y')), 500
+
+@app.errorhandler(413)
+def request_too_large(error):
+    if request.path.startswith('/api/'):
+        return jsonify({'success': False, 'message': 'Ukuran file cadangan melebihi batas 256 MB.'}), 413
+    return 'Ukuran file terlalu besar.', 413
 
 # ===== DATABASE MODELS =====
 class User(db.Model):
@@ -474,6 +486,259 @@ def auth_me():
 @role_required('admin')
 def pengaturan_akun_page():
     return render_template('account.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
+
+BACKUP_FORMAT = 'perpustakaan-backup'
+BACKUP_VERSION = 1
+BACKUP_FILE_AREAS = {
+    'covers': app.config['UPLOAD_FOLDER'],
+    'school_logos': app.config['SCHOOL_LOGO_FOLDER'],
+    'ebooks': app.config['EBOOK_UPLOAD_FOLDER']
+}
+
+def _backup_json_value(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return {'$binary': base64.b64encode(bytes(value)).decode('ascii')}
+    return value
+
+def _read_backup_file_areas():
+    files = []
+    for area, configured_folder in BACKUP_FILE_AREAS.items():
+        folder = configured_folder if os.path.isabs(configured_folder) else os.path.join(app.root_path, configured_folder)
+        if not os.path.isdir(folder):
+            continue
+        for current_folder, directories, filenames in os.walk(folder, followlinks=False):
+            directories[:] = [name for name in directories if not os.path.islink(os.path.join(current_folder, name))]
+            for filename in filenames:
+                path = os.path.join(current_folder, filename)
+                if os.path.islink(path) or not os.path.isfile(path):
+                    continue
+                with open(path, 'rb') as backup_file:
+                    content = backup_file.read()
+                files.append({
+                    'area': area,
+                    'filename': os.path.relpath(path, folder).replace(os.sep, '/'),
+                    'content_base64': base64.b64encode(content).decode('ascii'),
+                    'sha256': hashlib.sha256(content).hexdigest()
+                })
+    return files
+
+def _validate_backup(payload):
+    if not isinstance(payload, dict) or payload.get('format') != BACKUP_FORMAT or payload.get('version') != BACKUP_VERSION:
+        raise ValueError('Format atau versi file cadangan tidak didukung.')
+    if not isinstance(payload.get('tables'), dict) or not isinstance(payload.get('files'), list):
+        raise ValueError('Struktur file cadangan tidak valid.')
+
+    if db.engine.dialect.name != 'sqlite':
+        raise ValueError('Cadangkan & Pulihkan saat ini hanya mendukung database SQLite.')
+
+    inspector = inspect(db.engine)
+    expected_tables = sorted(inspector.get_table_names())
+    if set(payload['tables']) != set(expected_tables):
+        raise ValueError('Daftar tabel pada cadangan tidak cocok dengan database aplikasi.')
+
+    tables = {}
+    for table_name in expected_tables:
+        table_backup = payload['tables'][table_name]
+        columns = [column['name'] for column in inspector.get_columns(table_name)]
+        if (
+            not isinstance(table_backup, dict)
+            or table_backup.get('columns') != columns
+            or not isinstance(table_backup.get('rows'), list)
+        ):
+            raise ValueError(f'Struktur tabel {table_name} pada cadangan tidak valid atau tidak cocok.')
+        validated_rows = []
+        for row in table_backup['rows']:
+            if not isinstance(row, dict) or set(row) != set(columns):
+                raise ValueError(f'Data baris pada tabel {table_name} tidak valid.')
+            validated_row = {}
+            for column, value in row.items():
+                if isinstance(value, dict):
+                    if set(value) != {'$binary'} or not isinstance(value['$binary'], str):
+                        raise ValueError(f'Nilai kolom {column} pada tabel {table_name} tidak valid.')
+                    try:
+                        value = base64.b64decode(value['$binary'], validate=True)
+                    except (binascii.Error, ValueError) as error:
+                        raise ValueError(f'Nilai biner kolom {column} pada tabel {table_name} rusak.') from error
+                elif not (
+                    value is None
+                    or isinstance(value, (str, int, bool))
+                    or (isinstance(value, float) and math.isfinite(value))
+                ):
+                    raise ValueError(f'Nilai kolom {column} pada tabel {table_name} tidak valid.')
+                validated_row[column] = value
+            validated_rows.append(validated_row)
+        tables[table_name] = (columns, validated_rows)
+
+    files = []
+    seen_files = set()
+    for item in payload['files']:
+        if not isinstance(item, dict) or set(item) != {'area', 'filename', 'content_base64', 'sha256'}:
+            raise ValueError('Daftar berkas pada cadangan tidak valid.')
+        area = item['area']
+        filename = item['filename']
+        if (
+            not isinstance(area, str)
+            or area not in BACKUP_FILE_AREAS
+            or not isinstance(filename, str)
+            or not filename
+            or '/' in filename
+            or '\\' in filename
+            or any(character in filename for character in '<>:"|?*')
+            or any(ord(character) < 32 for character in filename)
+            or os.path.isabs(filename)
+            or not isinstance(item['content_base64'], str)
+            or not isinstance(item['sha256'], str)
+        ):
+            raise ValueError('Lokasi atau isi berkas pada cadangan tidak valid.')
+        if filename in {'.', '..'} or (area, filename) in seen_files:
+            raise ValueError('Nama berkas pada cadangan tidak valid atau duplikat.')
+        seen_files.add((area, filename))
+        try:
+            content = base64.b64decode(item['content_base64'], validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ValueError(f'Berkas {filename} pada cadangan rusak.') from error
+        if hashlib.sha256(content).hexdigest() != item['sha256']:
+            raise ValueError(f'Pemeriksaan integritas berkas {filename} gagal.')
+        files.append((area, filename, content))
+    return tables, files
+
+@app.route('/cadangkan-pulihkan')
+@role_required('admin')
+def backup_restore_page():
+    return render_template(
+        'backup_restore.html',
+        current_date=datetime.now().strftime('%d %B %Y'),
+        user=get_current_user()
+    )
+
+@app.route('/api/admin/backup')
+@role_required('admin')
+def download_backup():
+    if db.engine.dialect.name != 'sqlite':
+        return jsonify({'success': False, 'message': 'Cadangkan & Pulihkan saat ini hanya mendukung database SQLite.'}), 400
+    inspector = inspect(db.engine)
+    tables = {}
+    for table_name in sorted(inspector.get_table_names()):
+        columns = [column['name'] for column in inspector.get_columns(table_name)]
+        rows = db.session.execute(text(f'SELECT * FROM "{table_name}"')).mappings().all()
+        tables[table_name] = {
+            'columns': columns,
+            'rows': [
+                {column: _backup_json_value(row[column]) for column in columns}
+                for row in rows
+            ]
+        }
+    backup = {
+        'format': BACKUP_FORMAT,
+        'version': BACKUP_VERSION,
+        'created_at': datetime.now().astimezone().isoformat(),
+        'tables': tables,
+        'files': _read_backup_file_areas()
+    }
+    output = io.BytesIO(json.dumps(backup, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8'))
+    output.seek(0)
+    filename = f'cadangan-perpustakaan-{datetime.now().strftime("%Y%m%d-%H%M%S")}.json'
+    response = send_file(output, mimetype='application/json', as_attachment=True, download_name=filename)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+@app.route('/api/admin/restore', methods=['POST'])
+@role_required('admin')
+def restore_backup():
+    uploaded = request.files.get('backup_file')
+    if not uploaded or not uploaded.filename:
+        return jsonify({'success': False, 'message': 'Pilih file cadangan JSON terlebih dahulu.'}), 400
+    if request.form.get('confirmation') != 'PULIHKAN':
+        return jsonify({'success': False, 'message': 'Ketik PULIHKAN untuk mengonfirmasi penggantian data.'}), 400
+
+    try:
+        def reject_json_constant(value):
+            raise ValueError(f'Nilai JSON {value} tidak valid.')
+
+        payload = json.loads(
+            uploaded.stream.read().decode('utf-8'),
+            parse_constant=reject_json_constant
+        )
+        tables, files = _validate_backup(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        return jsonify({'success': False, 'message': f'File cadangan tidak dapat dipulihkan: {error}'}), 400
+
+    staged_files = []
+    try:
+        for area, filename, content in files:
+            folder = BACKUP_FILE_AREAS[area]
+            if not os.path.isabs(folder):
+                folder = os.path.join(app.root_path, folder)
+            destination = os.path.abspath(os.path.join(folder, filename))
+            if os.path.commonpath([os.path.abspath(folder), destination]) != os.path.abspath(folder):
+                raise ValueError(f'Lokasi berkas {filename} berada di luar folder unggahan.')
+            if os.path.islink(destination):
+                raise ValueError(f'Berkas {filename} tidak boleh berupa symbolic link.')
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            temporary = f'{destination}.{uuid.uuid4().hex}.restore'
+            with open(temporary, 'wb') as staged:
+                staged.write(content)
+            staged_files.append((temporary, destination))
+    except (OSError, ValueError) as error:
+        for temporary, _ in staged_files:
+            if os.path.exists(temporary):
+                os.remove(temporary)
+        return jsonify({'success': False, 'message': f'Berkas cadangan gagal disiapkan: {error}'}), 500
+
+    db.session.remove()
+    raw_connection = db.engine.raw_connection()
+    try:
+        raw_connection.execute('PRAGMA foreign_keys=OFF')
+        raw_connection.execute('BEGIN IMMEDIATE')
+        for table_name in reversed(list(tables)):
+            raw_connection.execute(f'DELETE FROM "{table_name}"')
+        for table_name, (columns, rows) in tables.items():
+            if not columns or not rows:
+                continue
+            quoted_columns = ', '.join(f'"{column}"' for column in columns)
+            placeholders = ', '.join('?' for _ in columns)
+            statement = f'INSERT INTO "{table_name}" ({quoted_columns}) VALUES ({placeholders})'
+            raw_connection.executemany(statement, [
+                tuple(row[column] for column in columns)
+                for row in rows
+            ])
+        foreign_key_errors = raw_connection.execute('PRAGMA foreign_key_check').fetchall()
+        if foreign_key_errors:
+            raise ValueError('Cadangan berisi relasi data yang tidak valid.')
+        raw_connection.commit()
+    except Exception as error:
+        raw_connection.rollback()
+        for temporary, _ in staged_files:
+            if os.path.exists(temporary):
+                os.remove(temporary)
+        if isinstance(error, ValueError):
+            return jsonify({'success': False, 'message': str(error)}), 400
+        app.logger.exception('Pemulihan database gagal')
+        return jsonify({'success': False, 'message': 'Pemulihan gagal. Data database saat ini tidak diubah.'}), 500
+    finally:
+        raw_connection.execute('PRAGMA foreign_keys=ON')
+        raw_connection.close()
+        db.session.remove()
+
+    try:
+        for temporary, destination in staged_files:
+            os.replace(temporary, destination)
+    except OSError:
+        app.logger.exception('Database dipulihkan tetapi berkas unggahan gagal diterapkan')
+        for temporary, _ in staged_files:
+            if os.path.exists(temporary):
+                os.remove(temporary)
+        session.clear()
+        return jsonify({
+            'success': False,
+            'message': 'Data database telah dipulihkan, tetapi sebagian berkas unggahan gagal diterapkan. Periksa penyimpanan server.'
+        }), 500
+
+    session.clear()
+    return jsonify({'success': True, 'message': 'Pemulihan berhasil. Silakan masuk kembali.'})
 
 @app.route('/api/admin/kredensial', methods=['PUT'])
 @role_required('admin')

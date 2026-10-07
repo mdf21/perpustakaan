@@ -10,6 +10,7 @@ Aplikasi perpustakaan profesional lengkap untuk sekolah, dibangun dengan Python 
 - **Panel petugas**: Dashboard, CRUD buku/anggota/rak, master jenis buku/kategori/jurusan/kelas/DDC/sumber, peminjaman dan pengembalian, serta laporan transaksi dan kas denda
 - **Kartu anggota**: Cetak kartu siswa dengan QR bertanda tangan dari halaman Data Anggota
 - **Label buku**: Cetak barcode buku dari halaman Data Buku
+- **Cadangkan & pulihkan** (admin): Ekspor/impor seluruh tabel database dan file unggahan sebagai satu file JSON
 
 ## Instalasi & Menjalankan
 
@@ -60,6 +61,7 @@ perpustakaan/
 - **Siswa**: Katalog, informasi perpustakaan, dan absensi kunjungan tanpa login petugas
 - **Petugas/Admin**: Pengelolaan koleksi, anggota, rak, transaksi, laporan, informasi perpustakaan, dan kartu anggota
 - Akun awal: `admin` / `admin123`; segera ganti kredensial dan `SECRET_KEY` sebelum deployment publik
+- File cadangan JSON berisi data pribadi dan hash kata sandi; simpan di lokasi aman dan hanya pulihkan file yang tepercaya
 
 ## Catatan
 

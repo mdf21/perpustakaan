@@ -54,6 +54,9 @@
                 <a href="/pengaturan-akun" class="list-group-item list-group-item-action {% if request.endpoint == 'pengaturan_akun_page' %}active{% endif %}" title="Akun Administrator" aria-label="Akun Administrator">
                     <i class="bi bi-person-gear"></i><span class="sidebar-label">Akun Administrator</span>
                 </a>
+                <a href="/cadangkan-pulihkan" class="list-group-item list-group-item-action {% if request.endpoint == 'backup_restore_page' %}active{% endif %}" title="Cadangkan & Pulihkan" aria-label="Cadangkan dan Pulihkan">
+                    <i class="bi bi-database-lock"></i><span class="sidebar-label">Cadangkan & Pulihkan</span>
+                </a>
                 {% endif %}
                 {% endif %}
                 <a href="/opac" class="list-group-item list-group-item-action {% if request.endpoint == 'opac_page' %}active{% endif %}" title="Katalog Publik" aria-label="Katalog Publik">

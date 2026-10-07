@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Cadangkan & Pulihkan - Perpustakaan{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-1 fw-bold">Cadangkan & Pulihkan Sistem</h2>
+        <p class="text-muted mb-0">Simpan atau pulihkan seluruh data perpustakaan melalui satu file JSON.</p>
+    </div>
+</div>
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card border-0 h-100">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-download me-2 text-primary"></i>Cadangkan Data</h5>
+                <p class="text-muted">File mencakup seluruh tabel database, termasuk akun dan transaksi, serta semua file unggahan buku dan logo.</p>
+                <p class="small text-danger"><i class="bi bi-shield-exclamation me-1"></i>Cadangan berisi data pribadi dan hash kata sandi. Simpan file dengan aman dan jangan membagikannya.</p>
+                <a class="btn btn-primary" href="{{ url_for('download_backup') }}">
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Unduh Cadangan JSON
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card border-0 h-100">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-upload me-2 text-warning"></i>Pulihkan Data</h5>
+                <p class="text-muted">Pemulihan akan mengganti seluruh data database dengan isi file cadangan. Tindakan ini tidak dapat dibatalkan.</p>
+                <form id="restoreForm">
+                    <div class="mb-3">
+                        <label for="backupFile" class="form-label">File cadangan JSON</label>
+                        <input id="backupFile" name="backup_file" class="form-control" type="file" accept=".json,application/json" required>
+                        <div class="form-text">Ukuran maksimum 256 MB.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="restoreConfirmation" class="form-label">Ketik <strong>PULIHKAN</strong> untuk mengonfirmasi</label>
+                        <input id="restoreConfirmation" name="confirmation" class="form-control" autocomplete="off" required>
+                    </div>
+                    <button id="restoreButton" class="btn btn-warning" type="submit">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Pulihkan Sistem
+                    </button>
+                    <span id="restoreMessage" class="ms-2 small" role="status" aria-live="polite"></span>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('restoreForm').addEventListener('submit', async function(event) {
+    event.preventDefault();
+    if (!window.confirm('Pemulihan akan mengganti seluruh data aktif. Lanjutkan?')) return;
+
+    const button = document.getElementById('restoreButton');
+    const message = document.getElementById('restoreMessage');
+    button.disabled = true;
+    message.textContent = 'Memulihkan data...';
+    message.className = 'ms-2 small text-muted';
+
+    try {
+        const response = await fetch('{{ url_for("restore_backup") }}', {
+            method: 'POST',
+            body: new FormData(this)
+        });
+        const result = await response.json();
+        message.textContent = result.message || 'Pemulihan gagal.';
+        message.className = `ms-2 small ${result.success ? 'text-success' : 'text-danger'}`;
+        if (result.success) {
+            window.setTimeout(() => window.location.assign('{{ url_for("login") }}'), 1500);
+        } else {
+            button.disabled = false;
+        }
+    } catch (error) {
+        message.textContent = 'File tidak dapat dikirim. Periksa koneksi lalu coba kembali.';
+        message.className = 'ms-2 small text-danger';
+        button.disabled = false;
+    }
+});
+</script>
+{% endblock %}
