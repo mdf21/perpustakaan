@@ -53,7 +53,8 @@ body {
 }
 
 .sidebar-heading {
-    padding: 1.5rem 1.25rem;
+    min-height: 88px;
+    padding: 1rem 1.25rem;
     font-size: 1.25rem;
     font-weight: 700;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -71,13 +72,13 @@ body {
 }
 
 .sidebar-school-logo {
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
     object-fit: contain;
     background: var(--white);
-    border-radius: 4px;
-    padding: 2px;
+    border-radius: 8px;
+    padding: 3px;
 }
 
 .sidebar-nav {
@@ -561,8 +562,17 @@ body {
 
     #wrapper.sidebar-collapsed .sidebar-heading {
         justify-content: center;
+        min-height: 72px;
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
         padding-right: 0.5rem;
         padding-left: 0.5rem;
+    }
+
+    #wrapper.sidebar-collapsed .sidebar-school-logo {
+        width: 40px;
+        height: 40px;
+        flex-basis: 40px;
     }
 
     #wrapper.sidebar-collapsed .sidebar-brand-label,
