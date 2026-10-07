@@ -15,7 +15,7 @@
         body { min-height: 100vh; display: flex; flex-direction: column; font-family: 'DM Sans', sans-serif; background: #f5f8f6; color: #18332b; }
         .student-nav { background: #173d33; }
         .student-brand { font-family: 'Newsreader', serif; font-size: 1.4rem; color: #fff; text-decoration: none; }
-        .student-brand .school-logo { width: 30px; height: 30px; object-fit: contain; background: #fff; border-radius: 3px; padding: 2px; }
+        .student-brand .school-logo { width: 48px; height: 48px; flex: 0 0 48px; object-fit: contain; background: #fff; border-radius: 6px; padding: 3px; }
         .student-nav .nav-link { color: #d8e7dd; border-radius: 4px; padding: .55rem .8rem; }
         .student-nav .nav-link:hover, .student-nav .nav-link.active { color: #fff; background: #2b5b4c; }
         .student-shell { flex: 1; padding: 2.25rem 0 4rem; background-image: radial-gradient(#d7e3dc 0.7px, transparent 0.7px); background-size: 18px 18px; }
@@ -29,7 +29,7 @@
         .book-cover { width: 100%; height: 100%; object-fit: contain; }
         .book-cover-placeholder { color: #71847b; font-size: 2rem; }
         .book-cover-thumb { display: block; width: auto; height: auto; max-width: 96px; max-height: 128px; object-fit: contain; }
-        @media (max-width: 575.98px) { .student-shell { padding-top: 1.25rem; } .student-brand { font-size: 1.2rem; } }
+        @media (max-width: 575.98px) { .student-shell { padding-top: 1.25rem; } .student-brand { font-size: 1.2rem; } .student-brand .school-logo { width: 40px; height: 40px; flex-basis: 40px; } }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -38,7 +38,7 @@
         <div class="container">
             <a class="student-brand d-inline-flex align-items-center" href="/opac">
                 {% if school_logo %}<img class="school-logo me-2" src="{{ url_for('static', filename='uploads/school-logos/' ~ school_logo) }}" alt="Logo {{ school_name }}">{% else %}<i class="bi bi-book-half me-2"></i>{% endif %}
-                Perpustakaan
+                E-Perpus MIMH
             </a>
             <button class="navbar-toggler border-light" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-label="Buka navigasi"><i class="bi bi-list text-white"></i></button>
             <div class="collapse navbar-collapse" id="studentNav">
