@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Cetak Barcode Buku</title>
+    <title>Cetak QR Buku</title>
     <style>
         body {
             margin: 0;
@@ -25,7 +25,7 @@
         .label-grid {
             display: grid;
             grid-template-columns: repeat(3, 62mm);
-            grid-auto-rows: 32mm;
+            grid-auto-rows: 40mm;
             gap: 1mm;
             justify-content: center;
             padding: 10mm;
@@ -33,8 +33,8 @@
         .barcode-label {
             box-sizing: border-box;
             width: 62mm;
-            height: 32mm;
-            padding: 1.5mm 2.5mm;
+            height: 40mm;
+            padding: 1mm 2.5mm;
             border: 1px solid #cbd3d9;
             display: flex;
             flex-direction: column;
@@ -51,9 +51,9 @@
             justify-content: center;
             gap: 1.5mm;
             width: 100%;
-            height: 7mm;
-            min-height: 7mm;
-            margin-bottom: 0.5mm;
+            height: 6mm;
+            min-height: 6mm;
+            margin-bottom: 0.25mm;
         }
         .school-logo,
         .school-logo-placeholder {
@@ -91,16 +91,16 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .barcode-image {
+        .qr-image {
             display: block;
-            width: 100%;
-            height: 13mm;
-            flex: 0 0 13mm;
+            width: 24mm;
+            height: 24mm;
+            flex: 0 0 24mm;
             object-fit: contain;
         }
         .book-code {
-            margin-top: 0.5mm;
-            font-size: 8pt;
+            margin-top: 0.25mm;
+            font-size: 7pt;
             letter-spacing: .3px;
         }
         @media print {
@@ -115,7 +115,7 @@
                 padding: 0;
                 gap: 1mm;
                 grid-template-columns: repeat(3, 62mm);
-                grid-auto-rows: 32mm;
+                grid-auto-rows: 40mm;
             }
             .barcode-label {
                 border-color: #adb5bd;
@@ -130,7 +130,7 @@
     </style>
 </head>
 <body>
-    <button class="print-action" type="button" onclick="window.print()">Cetak Barcode ({{ buku_list|length }})</button>
+    <button class="print-action" type="button" onclick="window.print()">Cetak QR Buku ({{ buku_list|length }})</button>
     <main class="label-grid">
         {% for buku in buku_list %}
         {% set code_text = buku.isbn if buku.isbn else 'B-%04d'|format(buku.id) %}
@@ -144,7 +144,7 @@
                 <div class="school-name" title="{{ info.get('nama_sekolah', 'Perpustakaan Sekolah') }}">{{ info.get('nama_sekolah', 'Perpustakaan Sekolah') }}</div>
             </header>
             <div class="book-title" title="{{ buku.judul }}">{{ buku.judul }}</div>
-            <img class="barcode-image" src="{{ url_for('get_buku_barcode', id=buku.id, hide_text=1) }}" alt="Barcode {{ buku.judul }}">
+            <img class="qr-image" src="{{ url_for('get_buku_barcode', id=buku.id) }}" alt="QR buku {{ buku.judul }}">
             <div class="book-code">{{ code_text }}</div>
         </article>
         {% endfor %}

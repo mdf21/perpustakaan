@@ -1325,12 +1325,10 @@ def get_buku_barcode(id):
     b = Buku.query.get_or_404(id)
     code_text = b.isbn if b.isbn else f"B-{b.id:04d}"
     try:
-        CODE = barcode.get_barcode_class('code128')
         rv = io.BytesIO()
-        options = {'write_text': False} if request.args.get('hide_text') == '1' else None
-        CODE(code_text, writer=ImageWriter()).write(rv, options=options)
+        qrcode.make(code_text).save(rv, format='PNG')
         rv.seek(0)
-        return send_file(rv, mimetype='image/png', as_attachment=False, download_name=f'barcode_{code_text}.png')
+        return send_file(rv, mimetype='image/png', as_attachment=False, download_name=f'qr_buku_{b.id}.png')
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -1373,12 +1371,32 @@ def print_buku_barcodes(id=None):
 @app.route('/api/buku/scan/<string:kode>', methods=['GET'])
 @login_required
 def scan_buku(kode):
+    kode = kode.strip()
     buku = Buku.query.filter_by(isbn=kode).first()
-    if not buku and kode.startswith('B-'):
+    if not buku:
+        normalized_code = ''.join(char for char in kode.upper() if char.isalnum())
+        if normalized_code.startswith('ISBN'):
+            normalized_code = normalized_code[4:]
+        isbn_variants = {normalized_code}
+        if len(normalized_code) == 10 and normalized_code[:9].isdigit() and normalized_code[-1] in '0123456789X':
+            isbn13_base = '978' + normalized_code[:9]
+            checksum = sum(int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(isbn13_base))
+            isbn_variants.add(isbn13_base + str((10 - checksum % 10) % 10))
+        elif len(normalized_code) == 13 and normalized_code.startswith('978') and normalized_code.isdigit():
+            isbn10_base = normalized_code[3:12]
+            checksum = sum(int(digit) * (10 - index) for index, digit in enumerate(isbn10_base))
+            check_digit = 11 - checksum % 11
+            isbn_variants.add(isbn10_base + ('X' if check_digit == 10 else '0' if check_digit == 11 else str(check_digit)))
+
+        normalized_isbn = func.replace(func.replace(func.replace(func.replace(
+            func.replace(func.upper(Buku.isbn), 'ISBN', ''), '-', ''), ' ', ''), '.', ''), ':', '')
+        buku = Buku.query.filter(normalized_isbn.in_(isbn_variants)).first()
+
+    if not buku and kode.upper().startswith('B-'):
         try:
-            b_id = int(kode.split('-')[1])
+            b_id = int(kode[2:])
             buku = Buku.query.get(b_id)
-        except:
+        except ValueError:
             pass
             
     if buku:

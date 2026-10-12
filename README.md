@@ -9,7 +9,7 @@ Aplikasi perpustakaan profesional lengkap untuk sekolah, dibangun dengan Python 
 - **Absensi kunjungan** (`/kunjungan`): Pindai QR kartu anggota dengan kamera atau pemindai QR USB; satu kunjungan per anggota per hari
 - **Panel petugas**: Dashboard, CRUD buku/anggota/rak, master jenis buku/kategori/jurusan/kelas/DDC/sumber, peminjaman dan pengembalian, serta laporan transaksi dan kas denda
 - **Kartu anggota**: Cetak kartu siswa dengan QR bertanda tangan dari halaman Data Anggota; scan QR/barcode kartu atau masukkan NIS untuk memilih anggota saat peminjaman
-- **Label buku**: Cetak barcode buku dari halaman Data Buku
+- **Label buku**: Cetak QR buku dari halaman Data Buku untuk pemindaian cepat dengan kamera atau scanner QR
 - **Cadangkan & pulihkan** (admin): Ekspor/impor seluruh tabel database dan file unggahan sebagai satu file JSON
 
 ## Instalasi & Menjalankan

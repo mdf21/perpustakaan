@@ -21,7 +21,7 @@
                 <button class="btn btn-outline-primary" type="button" onclick="document.getElementById('bukuExcelFile').click()"><i class="bi bi-upload me-1"></i>Import Excel</button>
                 <a class="btn btn-outline-success" href="/api/buku/export"><i class="bi bi-download me-1"></i>Unduh Data</a>
                 <button class="btn btn-outline-info" type="button" id="bulkBarcodeBtn" onclick="printSelectedBuku()" disabled>
-                    <i class="bi bi-printer me-1"></i> Cetak Barcode
+                    <i class="bi bi-printer me-1"></i> Cetak QR Buku
                 </button>
                 <button class="btn btn-primary" onclick="openModal()">
                     <i class="bi bi-plus-circle me-1"></i> Tambah Buku
@@ -257,7 +257,7 @@ function loadBuku() {
                         <td><span class="badge ${b.stok > 0 ? 'bg-success' : 'bg-danger'}">${b.stok}</span></td>
                         <td>${escapeHtml(b.lokasi_rak || '-')}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning me-1" onclick="editBuku(${b.id})"><i class="bi bi-pencil"></i></button> <a href="/buku/${b.id}/barcode/print" target="_blank" rel="noopener" class="btn btn-sm btn-info me-1" title="Cetak Barcode"><i class="bi bi-upc-scan"></i></a>
+                            <button class="btn btn-sm btn-warning me-1" onclick="editBuku(${b.id})"><i class="bi bi-pencil"></i></button> <a href="/buku/${b.id}/barcode/print" target="_blank" rel="noopener" class="btn btn-sm btn-info me-1" title="Cetak QR Buku"><i class="bi bi-qr-code"></i></a>
                             <button class="btn btn-sm btn-danger" onclick="confirmDelete(${b.id})"><i class="bi bi-trash"></i></button>
                         </td>
                     </tr>`;
@@ -283,8 +283,8 @@ function updateBulkBarcodeButton() {
     const button = document.getElementById('bulkBarcodeBtn');
     button.disabled = selectedBukuIds.size === 0;
     button.innerHTML = selectedBukuIds.size > 0
-        ? `<i class="bi bi-printer me-1"></i> Cetak Barcode (${selectedBukuIds.size})`
-        : '<i class="bi bi-printer me-1"></i> Cetak Barcode';
+        ? `<i class="bi bi-printer me-1"></i> Cetak QR Buku (${selectedBukuIds.size})`
+        : '<i class="bi bi-printer me-1"></i> Cetak QR Buku';
 }
 
 function printSelectedBuku() {
