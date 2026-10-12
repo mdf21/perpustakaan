@@ -41,6 +41,7 @@
 </div>
 {% endblock %}
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/zxing.min.js') }}"></script>
 <script>
 const scanForm = document.getElementById('scanForm');
 const qrInput = document.getElementById('qrCode');
@@ -50,8 +51,9 @@ const message = document.getElementById('scanMessage');
 const cameraPreview = document.getElementById('cameraPreview');
 const cameraButton = document.getElementById('cameraButton');
 const stopCamera = document.getElementById('stopCamera');
-let cameraStream;
 let scanning = false;
+let cameraReader;
+let cameraControls;
 
 scanForm.addEventListener('submit', async function(event) {
     event.preventDefault();
@@ -83,33 +85,48 @@ async function recordAttendance(code, input) {
 }
 
 cameraButton.addEventListener('click', async function() {
-    if (!('BarcodeDetector' in window)) {
+    if (!window.isSecureContext) {
         message.className = 'mt-3 text-danger';
-        message.textContent = 'Pemindaian kamera tidak didukung browser ini. Gunakan pemindai QR USB atau masukkan kode kartu.';
+        message.textContent = 'Kamera memerlukan HTTPS dengan sertifikat valid atau localhost. Periksa sertifikat koneksi.';
         return;
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+        message.className = 'mt-3 text-danger';
+        message.textContent = 'Browser tidak menyediakan akses kamera. Gunakan browser terbaru atau pemindai QR USB.';
+        return;
+    }
+    if (!window.ZXing) {
+        message.className = 'mt-3 text-danger';
+        message.textContent = 'Pemindai kamera gagal dimuat. Gunakan pemindai QR USB atau masukkan kode kartu.';
+        return;
+    }
+
     try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}});
-        cameraPreview.srcObject = cameraStream;
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+        cameraReader = new ZXing.BrowserMultiFormatReader(hints);
         cameraPreview.classList.remove('d-none');
         stopCamera.classList.remove('d-none');
         cameraButton.disabled = true;
-        await cameraPreview.play();
-        const detector = new BarcodeDetector({formats: ['qr_code']});
         scanning = true;
-        while (scanning) {
-            const codes = await detector.detect(cameraPreview);
-            if (codes.length) {
-                qrInput.value = codes[0].rawValue;
-                scanForm.requestSubmit();
+        message.className = 'mt-3 text-secondary';
+        message.textContent = 'Arahkan kamera ke QR kartu anggota.';
+
+        const controls = await cameraReader.decodeFromVideoDevice(undefined, cameraPreview, result => {
+            if (result && scanning) {
+                qrInput.value = result.getText();
                 stopCameraScan();
-                break;
+                scanForm.requestSubmit();
             }
-            await new Promise(resolve => requestAnimationFrame(resolve));
+        });
+        if (scanning) {
+            cameraControls = controls;
+        } else {
+            controls.stop();
         }
     } catch (error) {
         message.className = 'mt-3 text-danger';
-        message.textContent = 'Kamera tidak dapat dibuka. Pastikan izin kamera aktif dan halaman menggunakan HTTPS atau localhost.';
+        message.textContent = error.message || 'Kamera tidak dapat dibuka. Pastikan izin kamera aktif.';
         stopCameraScan();
     }
 });
@@ -117,7 +134,10 @@ cameraButton.addEventListener('click', async function() {
 stopCamera.addEventListener('click', stopCameraScan);
 function stopCameraScan() {
     scanning = false;
-    if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+    if (cameraControls) cameraControls.stop();
+    cameraControls = null;
+    if (cameraReader) cameraReader.reset();
+    cameraReader = null;
     cameraPreview.srcObject = null;
     cameraPreview.classList.add('d-none');
     stopCamera.classList.add('d-none');

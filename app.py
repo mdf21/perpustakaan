@@ -1462,6 +1462,25 @@ def get_anggota():
         'page': page
     })
 
+@app.route('/api/anggota/scan', methods=['POST'])
+@login_required
+def scan_anggota():
+    data = request.get_json(silent=True) or {}
+    code = data.get('code', '').strip()
+    if not code:
+        return jsonify({'success': False, 'message': 'Pindai QR kartu atau masukkan NIS anggota'}), 400
+
+    try:
+        payload = URLSafeSerializer(app.config['SECRET_KEY'], salt='kartu-anggota').loads(code)
+    except BadSignature:
+        anggota = Anggota.query.filter_by(nis=code, status='Aktif').first()
+    else:
+        anggota = Anggota.query.filter_by(id=payload.get('anggota_id'), status='Aktif').first()
+
+    if not anggota:
+        return jsonify({'success': False, 'message': 'Anggota tidak ditemukan atau tidak aktif'}), 404
+    return jsonify({'success': True, 'anggota': anggota.to_dict()})
+
 @app.route('/api/anggota/<int:id>', methods=['GET'])
 @login_required
 def get_anggota_by_id(id):

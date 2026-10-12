@@ -64,7 +64,16 @@
             <div class="modal-body">
                 <form id="pinjamForm">
                     <div class="mb-3">
-                        <label class="form-label">Pilih Anggota</label>
+                        <label class="form-label" for="kodeAnggota">Scan QR/barcode kartu atau masukkan NIS</label>
+                        <div class="input-group">
+                            <input class="form-control" id="kodeAnggota" autocomplete="off" placeholder="Scan QR kartu atau ketik NIS anggota">
+                            <button class="btn btn-outline-primary" type="button" id="cariAnggota" title="Cari anggota"><i class="bi bi-search"></i></button>
+                            <button class="btn btn-outline-secondary" type="button" id="kameraAnggota" title="Pindai kartu dengan kamera"><i class="bi bi-camera"></i></button>
+                        </div>
+                        <div class="form-text" id="anggotaScanMessage" role="status" aria-live="polite">Scan QR kartu anggota dengan kamera, gunakan scanner USB, atau masukkan NIS.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="anggotaId">Pilih Anggota</label>
                         <select class="form-select" id="anggotaId" required></select>
                     </div>
                     <div class="mb-3">
@@ -179,10 +188,12 @@
 </div>
 {% endblock %}
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/zxing.min.js') }}"></script>
 <script>
 let currentPage = 1;
-let barcodeStream;
 let barcodeScanning = false;
+let barcodeReader;
+let barcodeControls;
 
 document.addEventListener('DOMContentLoaded', function() {
     loadTransaksi();
@@ -196,6 +207,14 @@ document.addEventListener('DOMContentLoaded', function() {
         loadTransaksi();
     });
     document.getElementById('bukuId').addEventListener('change', updateStokInfo);
+    document.getElementById('kodeAnggota').addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            cariAnggotaKartu();
+        }
+    });
+    document.getElementById('cariAnggota').addEventListener('click', cariAnggotaKartu);
+    document.getElementById('kameraAnggota').addEventListener('click', scanAnggotaDenganKamera);
     document.getElementById('barcodeBuku').addEventListener('keydown', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault();
@@ -278,47 +297,149 @@ async function cariBukuBarcode() {
     input.focus();
 }
 
-async function scanBarcodeDenganKamera() {
-    const message = document.getElementById('barcodeMessage');
-    const preview = document.getElementById('barcodePreview');
-    if (!('BarcodeDetector' in window)) {
+async function cariAnggotaKartu() {
+    const input = document.getElementById('kodeAnggota');
+    const message = document.getElementById('anggotaScanMessage');
+    const code = input.value.trim();
+    if (!code) {
         message.className = 'form-text text-danger';
-        message.textContent = 'Pemindaian kamera tidak didukung browser ini. Gunakan scanner USB atau ketik kode barcode.';
+        message.textContent = 'Pindai QR kartu atau masukkan NIS anggota terlebih dahulu.';
+        input.focus();
         return;
     }
+
+    message.className = 'form-text text-muted';
+    message.textContent = 'Mencari anggota...';
     try {
-        const formats = await BarcodeDetector.getSupportedFormats();
-        const supportedFormats = ['code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e'].filter(format => formats.includes(format));
-        if (!supportedFormats.length) throw new Error('Browser tidak mendukung format barcode buku. Gunakan scanner USB.');
-        barcodeStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}});
-        preview.srcObject = barcodeStream;
-        preview.classList.remove('d-none');
-        await preview.play();
-        const detector = new BarcodeDetector({formats: supportedFormats});
-        barcodeScanning = true;
-        message.className = 'form-text text-muted';
-        message.textContent = 'Arahkan kamera ke barcode buku.';
-        while (barcodeScanning) {
-            const codes = await detector.detect(preview);
-            if (codes.length) {
-                document.getElementById('barcodeBuku').value = codes[0].rawValue;
-                stopBarcodeCamera();
-                await cariBukuBarcode();
-                return;
-            }
-            await new Promise(resolve => requestAnimationFrame(resolve));
+        const response = await fetch('/api/anggota/scan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code})
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Anggota tidak ditemukan.');
+
+        const member = result.anggota;
+        const select = document.getElementById('anggotaId');
+        let option = [...select.options].find(item => item.value === String(member.id));
+        if (!option) {
+            option = document.createElement('option');
+            option.value = member.id;
+            option.textContent = `${member.nama} (NIS: ${member.nis})`;
+            select.append(option);
         }
+        select.value = String(member.id);
+        message.className = 'form-text text-success';
+        message.textContent = `Anggota ditemukan: ${member.nama} (NIS: ${member.nis}).`;
     } catch (error) {
         message.className = 'form-text text-danger';
-        message.textContent = error.message || 'Kamera tidak dapat dibuka. Izinkan akses kamera atau gunakan scanner USB.';
+        message.textContent = error.message || 'Gagal mencari anggota.';
+    }
+    input.focus();
+}
+
+function scanAnggotaDenganKamera() {
+    if (!window.ZXing) {
+        const message = document.getElementById('anggotaScanMessage');
+        message.className = 'form-text text-danger';
+        message.textContent = 'Pemindai kamera gagal dimuat. Gunakan scanner USB atau masukkan NIS anggota.';
+        return;
+    }
+    startCameraScan({
+        formats: [
+            ZXing.BarcodeFormat.QR_CODE,
+            ZXing.BarcodeFormat.CODE_128,
+            ZXing.BarcodeFormat.CODE_39,
+            ZXing.BarcodeFormat.EAN_13,
+            ZXing.BarcodeFormat.EAN_8,
+            ZXing.BarcodeFormat.UPC_A,
+            ZXing.BarcodeFormat.UPC_E
+        ],
+        message: document.getElementById('anggotaScanMessage'),
+        prompt: 'Arahkan kamera ke QR atau barcode kartu anggota.',
+        onScan: code => {
+            document.getElementById('kodeAnggota').value = code;
+            cariAnggotaKartu();
+        }
+    });
+}
+
+function scanBarcodeDenganKamera() {
+    if (!window.ZXing) {
+        const message = document.getElementById('barcodeMessage');
+        message.className = 'form-text text-danger';
+        message.textContent = 'Pemindai kamera gagal dimuat. Gunakan scanner USB atau ketik kode barcode.';
+        return;
+    }
+    startCameraScan({
+        formats: [
+            ZXing.BarcodeFormat.CODE_128,
+            ZXing.BarcodeFormat.EAN_13,
+            ZXing.BarcodeFormat.EAN_8,
+            ZXing.BarcodeFormat.UPC_A,
+            ZXing.BarcodeFormat.UPC_E
+        ],
+        message: document.getElementById('barcodeMessage'),
+        prompt: 'Arahkan kamera ke barcode buku.',
+        onScan: code => {
+            document.getElementById('barcodeBuku').value = code;
+            cariBukuBarcode();
+        }
+    });
+}
+
+async function startCameraScan({formats, message, prompt, onScan}) {
+    const preview = document.getElementById('barcodePreview');
+    if (!window.isSecureContext) {
+        message.className = 'form-text text-danger';
+        message.textContent = 'Kamera memerlukan HTTPS dengan sertifikat valid atau localhost. Periksa sertifikat koneksi.';
+        return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+        message.className = 'form-text text-danger';
+        message.textContent = 'Browser tidak menyediakan akses kamera. Gunakan browser terbaru atau scanner USB.';
+        return;
+    }
+    if (!window.ZXing) {
+        message.className = 'form-text text-danger';
+        message.textContent = 'Pemindai kamera gagal dimuat. Gunakan scanner USB atau ketik kode barcode.';
+        return;
+    }
+
+    try {
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+        barcodeReader = new ZXing.BrowserMultiFormatReader(hints);
+        preview.classList.remove('d-none');
+        barcodeScanning = true;
+        message.className = 'form-text text-muted';
+        message.textContent = prompt;
+
+        const controls = await barcodeReader.decodeFromVideoDevice(undefined, preview, result => {
+            if (result && barcodeScanning) {
+                const code = result.getText();
+                stopBarcodeCamera();
+                onScan(code);
+            }
+        });
+        if (barcodeScanning) {
+            barcodeControls = controls;
+        } else {
+            controls.stop();
+        }
+    } catch (error) {
         stopBarcodeCamera();
+        message.className = 'form-text text-danger';
+        message.textContent = error.message || 'Kamera tidak dapat dibuka. Izinkan akses kamera atau gunakan scanner USB.';
     }
 }
 
 function stopBarcodeCamera() {
     barcodeScanning = false;
-    if (barcodeStream) barcodeStream.getTracks().forEach(track => track.stop());
-    barcodeStream = null;
+    if (barcodeControls) barcodeControls.stop();
+    barcodeControls = null;
+    if (barcodeReader) barcodeReader.reset();
+    barcodeReader = null;
     const preview = document.getElementById('barcodePreview');
     preview.srcObject = null;
     preview.classList.add('d-none');
