@@ -88,8 +88,9 @@
                             <button class="btn btn-outline-primary" type="button" id="cariBarcode" title="Cari buku"><i class="bi bi-search"></i></button>
                             <button class="btn btn-outline-secondary" type="button" id="kameraBarcode" title="Pindai QR/barcode dengan kamera"><i class="bi bi-camera"></i></button>
                         </div>
-                        <div class="form-text" id="barcodeMessage" role="status" aria-live="polite">Scan QR buku dengan kamera atau scanner USB, atau ketik ISBN/kode buku.</div>
-                        <video id="barcodePreview" class="w-100 mt-2 d-none" playsinline></video>
+                        <div class="form-text" id="barcodeMessage" role="status" aria-live="polite">Scan QR/barcode dengan kamera atau scanner USB; pencarian otomatis. ISBN/kode buku juga bisa diketik.</div>
+                        <video id="barcodePreview" class="w-100 mt-2 d-none" style="max-height: 45vh; background: #111; object-fit: contain;" playsinline muted></video>
+                        <button class="btn btn-sm btn-outline-danger mt-2 d-none" type="button" id="stopBarcodeCamera"><i class="bi bi-stop-fill me-1"></i>Hentikan kamera</button>
                     </div>
                     <div class="row">
                         <div class="col-sm-6 mb-3">
@@ -194,6 +195,10 @@ let currentPage = 1;
 let barcodeScanning = false;
 let barcodeReader;
 let barcodeControls;
+let barcodeStream;
+let barcodeDetector;
+let barcodeFallbackTimer;
+let barcodeLookupTimer;
 
 document.addEventListener('DOMContentLoaded', function() {
     loadTransaksi();
@@ -218,11 +223,23 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('barcodeBuku').addEventListener('keydown', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault();
+            clearTimeout(barcodeLookupTimer);
             cariBukuBarcode();
+        }
+    });
+    document.getElementById('barcodeBuku').addEventListener('input', function(event) {
+        clearTimeout(barcodeLookupTimer);
+        const input = event.currentTarget;
+        const code = input.value.trim();
+        if (code) {
+            barcodeLookupTimer = setTimeout(() => {
+                if (input.value.trim() === code) cariBukuBarcode();
+            }, 700);
         }
     });
     document.getElementById('cariBarcode').addEventListener('click', cariBukuBarcode);
     document.getElementById('kameraBarcode').addEventListener('click', scanBarcodeDenganKamera);
+    document.getElementById('stopBarcodeCamera').addEventListener('click', stopBarcodeCamera);
     document.getElementById('pinjamModal').addEventListener('hidden.bs.modal', stopBarcodeCamera);
 });
 
@@ -254,6 +271,7 @@ function updateStokInfo() {
 }
 
 async function cariBukuBarcode() {
+    clearTimeout(barcodeLookupTimer);
     const input = document.getElementById('barcodeBuku');
     const message = document.getElementById('barcodeMessage');
     const code = input.value.trim();
@@ -395,6 +413,7 @@ function scanBarcodeDenganKamera() {
 
 async function startCameraScan({formats, message, prompt, onScan}) {
     const preview = document.getElementById('barcodePreview');
+    const stopButton = document.getElementById('stopBarcodeCamera');
     if (!window.isSecureContext) {
         message.className = 'form-text text-danger';
         message.textContent = 'Kamera memerlukan HTTPS dengan sertifikat valid atau localhost. Periksa sertifikat koneksi.';
@@ -405,32 +424,99 @@ async function startCameraScan({formats, message, prompt, onScan}) {
         message.textContent = 'Browser tidak menyediakan akses kamera. Gunakan browser terbaru atau scanner USB.';
         return;
     }
-    if (!window.ZXing) {
+    if (!window.ZXing && !('BarcodeDetector' in window)) {
         message.className = 'form-text text-danger';
         message.textContent = 'Pemindai kamera gagal dimuat. Gunakan scanner USB atau ketik kode barcode.';
         return;
     }
 
+    stopBarcodeCamera();
+    barcodeScanning = true;
+    preview.classList.remove('d-none');
+    stopButton.classList.remove('d-none');
+    message.className = 'form-text text-muted';
+    message.textContent = `${prompt} Dekatkan kode, jaga kamera tetap fokus, dan pastikan cahaya cukup.`;
+
     try {
+        const nativeFormatNames = new Map([
+            [ZXing.BarcodeFormat.QR_CODE, 'qr_code'],
+            [ZXing.BarcodeFormat.CODE_128, 'code_128'],
+            [ZXing.BarcodeFormat.CODE_39, 'code_39'],
+            [ZXing.BarcodeFormat.CODE_93, 'code_93'],
+            [ZXing.BarcodeFormat.EAN_13, 'ean_13'],
+            [ZXing.BarcodeFormat.EAN_8, 'ean_8'],
+            [ZXing.BarcodeFormat.UPC_A, 'upc_a'],
+            [ZXing.BarcodeFormat.UPC_E, 'upc_e'],
+            [ZXing.BarcodeFormat.ITF, 'itf'],
+            [ZXing.BarcodeFormat.CODABAR, 'codabar']
+        ]);
+        if ('BarcodeDetector' in window) {
+            const supported = await BarcodeDetector.getSupportedFormats();
+            const nativeFormats = formats.map(format => nativeFormatNames.get(format))
+                .filter(format => supported.includes(format));
+            if (nativeFormats.length) {
+                barcodeStream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: {
+                        facingMode: {ideal: 'environment'},
+                        width: {ideal: 1920},
+                        height: {ideal: 1080}
+                    }
+                });
+                if (!barcodeScanning) {
+                    barcodeStream.getTracks().forEach(track => track.stop());
+                    barcodeStream = null;
+                    return;
+                }
+                preview.srcObject = barcodeStream;
+                await preview.play();
+                barcodeDetector = new BarcodeDetector({formats: nativeFormats});
+                message.textContent = `${prompt} Kamera aktif; arahkan kode ke bagian tengah gambar.`;
+                barcodeFallbackTimer = setTimeout(() => {
+                    startBarcodeZXingFallback(formats, message, prompt, onScan);
+                }, 2000);
+                while (barcodeScanning) {
+                    try {
+                        const results = await barcodeDetector.detect(preview);
+                        if (results.length) {
+                            const code = results[0].rawValue.trim();
+                            stopBarcodeCamera();
+                            onScan(code);
+                            return;
+                        }
+                    } catch (error) {
+                        message.textContent = 'Pemindai bawaan tidak dapat membaca video; mencoba pemindai cadangan.';
+                        startBarcodeZXingFallback(formats, message, prompt, onScan);
+                        return;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                return;
+            }
+        }
+
+        if (!window.ZXing) {
+            throw new Error('Browser tidak mendukung format kode ini. Gunakan scanner USB.');
+        }
         const hints = new Map();
         hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
         hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        hints.set(ZXing.DecodeHintType.ALSO_INVERTED, true);
         barcodeReader = new ZXing.BrowserMultiFormatReader(hints);
-        preview.classList.remove('d-none');
-        barcodeScanning = true;
-        message.className = 'form-text text-muted';
-        message.textContent = prompt;
+        message.textContent = `${prompt} Pemindai cadangan aktif; arahkan kode ke bagian tengah gambar.`;
 
         const controls = await barcodeReader.decodeFromConstraints({
             audio: false,
             video: {
                 facingMode: {ideal: 'environment'},
-                width: {ideal: 1280},
-                height: {ideal: 720}
+                width: {ideal: 1920},
+                height: {ideal: 1080},
+                frameRate: {ideal: 30},
+                focusMode: {ideal: 'continuous'}
             }
         }, preview, result => {
             if (result && barcodeScanning) {
-                const code = result.getText();
+                const code = result.getText().trim();
                 stopBarcodeCamera();
                 onScan(code);
             }
@@ -443,19 +529,52 @@ async function startCameraScan({formats, message, prompt, onScan}) {
     } catch (error) {
         stopBarcodeCamera();
         message.className = 'form-text text-danger';
-        message.textContent = error.message || 'Kamera tidak dapat dibuka. Izinkan akses kamera atau gunakan scanner USB.';
+        message.textContent = error.message || 'Kamera tidak dapat membaca kode. Periksa izin kamera, fokus, dan pencahayaan.';
     }
+}
+
+function startBarcodeZXingFallback(formats, message, prompt, onScan) {
+    if (!barcodeScanning || barcodeReader || !window.ZXing) return;
+    clearTimeout(barcodeFallbackTimer);
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    hints.set(ZXing.DecodeHintType.ALSO_INVERTED, true);
+    barcodeReader = new ZXing.BrowserMultiFormatReader(hints);
+    message.textContent = `${prompt} Mencoba pemindai kamera cadangan.`;
+    barcodeReader.decodeFromVideoElementContinuously(
+        document.getElementById('barcodePreview'),
+        result => {
+            if (result && barcodeScanning) {
+                const code = result.getText().trim();
+                stopBarcodeCamera();
+                onScan(code);
+            }
+        }
+    ).catch(error => {
+        if (barcodeScanning) {
+            stopBarcodeCamera();
+            message.className = 'form-text text-danger';
+            message.textContent = error.message || 'Pemindai kamera gagal membaca video. Periksa izin dan koneksi kamera.';
+        }
+    });
 }
 
 function stopBarcodeCamera() {
     barcodeScanning = false;
+    clearTimeout(barcodeFallbackTimer);
+    barcodeFallbackTimer = null;
     if (barcodeControls) barcodeControls.stop();
     barcodeControls = null;
     if (barcodeReader) barcodeReader.reset();
     barcodeReader = null;
+    barcodeDetector = null;
+    if (barcodeStream) barcodeStream.getTracks().forEach(track => track.stop());
+    barcodeStream = null;
     const preview = document.getElementById('barcodePreview');
     preview.srcObject = null;
     preview.classList.add('d-none');
+    document.getElementById('stopBarcodeCamera').classList.add('d-none');
 }
 
 function loadTransaksi() {
@@ -518,7 +637,7 @@ function changePage(page) {
 function openPinjamModal() {
     document.getElementById('pinjamForm').reset();
     document.getElementById('barcodeMessage').className = 'form-text';
-    document.getElementById('barcodeMessage').textContent = 'Scan QR buku dengan kamera atau scanner USB, atau ketik ISBN/kode buku.';
+    document.getElementById('barcodeMessage').textContent = 'Scan QR/barcode dengan kamera atau scanner USB; pencarian otomatis. ISBN/kode buku juga bisa diketik.';
     document.getElementById('anggotaScanMessage').className = 'form-text';
     document.getElementById('anggotaScanMessage').textContent = 'Scan QR kartu anggota dengan kamera, gunakan scanner USB, atau masukkan NIS.';
     document.getElementById('stokInfo').textContent = '';
