@@ -1,4 +1,4 @@
-# Aplikasi Perpustakaan SMA
+# Aplikasi Perpustakaan
 
 Aplikasi perpustakaan profesional lengkap untuk sekolah, dibangun dengan Python Flask dan SQLite.
 
