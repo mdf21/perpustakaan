@@ -111,6 +111,7 @@ async function recordAttendance(code, input) {
 }
 
 cameraButton.addEventListener('click', async function() {
+    stopAdminLoanCamera();
     if (!window.isSecureContext) {
         message.className = 'mt-3 text-danger';
         message.textContent = 'Kamera memerlukan HTTPS dengan sertifikat valid atau localhost.';

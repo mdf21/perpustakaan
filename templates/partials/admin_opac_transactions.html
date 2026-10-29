@@ -12,6 +12,7 @@
                         <div class="input-group">
                             <input id="adminLoanMemberCode" class="form-control" autocomplete="off" placeholder="Pindai kartu atau masukkan NIS" required>
                             <button id="adminLoanFindMember" class="btn btn-outline-primary" type="button" aria-label="Cari anggota"><i class="bi bi-search"></i></button>
+                            <button id="adminLoanScanMember" class="btn btn-outline-secondary" type="button" aria-label="Pindai kartu anggota dengan kamera"><i class="bi bi-camera"></i></button>
                         </div>
                         <div id="adminLoanMemberResult" class="form-text" role="status" aria-live="polite">Pindai dengan scanner USB atau masukkan NIS, lalu cari anggota.</div>
                     </div>
@@ -20,9 +21,15 @@
                         <div class="input-group">
                             <input id="adminLoanBookCode" class="form-control" autocomplete="off" placeholder="Pindai kode atau masukkan ISBN" required>
                             <button id="adminLoanFindBook" class="btn btn-outline-primary" type="button" aria-label="Cari buku"><i class="bi bi-search"></i></button>
+                            <button id="adminLoanScanBook" class="btn btn-outline-secondary" type="button" aria-label="Pindai kode buku dengan kamera"><i class="bi bi-camera"></i></button>
                         </div>
                         <div id="adminLoanBookResult" class="form-text" role="status" aria-live="polite">Pindai dengan scanner USB atau masukkan ISBN/kode buku.</div>
                     </div>
+                    <div id="adminLoanCameraContainer" class="mb-3 d-none">
+                        <video id="adminLoanCameraPreview" class="w-100 rounded bg-dark" style="max-height: 240px; object-fit: contain;" playsinline muted></video>
+                        <button id="adminLoanStopCamera" class="btn btn-sm btn-outline-danger mt-2" type="button"><i class="bi bi-stop-fill me-1"></i>Hentikan kamera</button>
+                    </div>
+                    <div id="adminLoanCameraMessage" class="small mb-3" role="status" aria-live="polite"></div>
                     <div class="row">
                         <div class="col-sm-6 mb-3">
                             <label for="adminLoanDate" class="form-label">Tanggal pinjam</label>

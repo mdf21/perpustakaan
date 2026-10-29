@@ -3,6 +3,9 @@ let adminLoanPage = 1;
 let adminLoanSearchTimer;
 let selectedLoanMember = null;
 let selectedLoanBook = null;
+let adminLoanCameraReader;
+let adminLoanCameraControls;
+let adminLoanCameraActive = false;
 
 document.addEventListener('DOMContentLoaded', function() {
     setAdminLoanDates();
@@ -10,6 +13,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('adminLoanFindMember').addEventListener('click', findAdminLoanMember);
     document.getElementById('adminLoanFindBook').addEventListener('click', findAdminLoanBook);
+    document.getElementById('adminLoanScanMember').addEventListener('click', function() {
+        startAdminLoanCamera('member');
+    });
+    document.getElementById('adminLoanScanBook').addEventListener('click', function() {
+        startAdminLoanCamera('book');
+    });
+    document.getElementById('adminLoanStopCamera').addEventListener('click', stopAdminLoanCamera);
     document.getElementById('adminLoanMemberCode').addEventListener('keydown', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault();
@@ -41,12 +51,99 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('adminLoanForm').addEventListener('submit', submitAdminLoan);
 });
 
+async function startAdminLoanCamera(target) {
+    const message = document.getElementById('adminLoanCameraMessage');
+    if (!window.isSecureContext) {
+        message.className = 'small mb-3 text-danger';
+        message.textContent = 'Kamera memerlukan HTTPS dengan sertifikat valid atau akses melalui localhost.';
+        return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.ZXing) {
+        message.className = 'small mb-3 text-danger';
+        message.textContent = 'Pemindai kamera tidak tersedia. Gunakan scanner USB atau masukkan kode secara manual.';
+        return;
+    }
+
+    stopAdminLoanCamera();
+    if (typeof stopCameraScan === 'function') stopCameraScan();
+    adminLoanCameraActive = true;
+    document.getElementById('adminLoanCameraContainer').classList.remove('d-none');
+    message.className = 'small mb-3 text-muted';
+    message.textContent = target === 'member'
+        ? 'Arahkan kamera ke QR atau barcode kartu anggota.'
+        : 'Arahkan kamera ke QR atau barcode buku.';
+
+    try {
+        const formats = [
+            ZXing.BarcodeFormat.QR_CODE,
+            ZXing.BarcodeFormat.CODE_128,
+            ZXing.BarcodeFormat.CODE_39,
+            ZXing.BarcodeFormat.CODE_93,
+            ZXing.BarcodeFormat.EAN_13,
+            ZXing.BarcodeFormat.EAN_8,
+            ZXing.BarcodeFormat.UPC_A,
+            ZXing.BarcodeFormat.UPC_E,
+            ZXing.BarcodeFormat.ITF,
+            ZXing.BarcodeFormat.CODABAR
+        ];
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        hints.set(ZXing.DecodeHintType.ALSO_INVERTED, true);
+        adminLoanCameraReader = new ZXing.BrowserMultiFormatReader(hints);
+        const controls = await adminLoanCameraReader.decodeFromConstraints({
+            audio: false,
+            video: {
+                facingMode: {ideal: 'environment'},
+                width: {ideal: 1920},
+                height: {ideal: 1080},
+                frameRate: {ideal: 30}
+            }
+        }, document.getElementById('adminLoanCameraPreview'), result => {
+            if (!result || !adminLoanCameraActive) return;
+            const code = result.getText().trim();
+            stopAdminLoanCamera();
+            if (target === 'member') {
+                document.getElementById('adminLoanMemberCode').value = code;
+                findAdminLoanMember();
+            } else {
+                document.getElementById('adminLoanBookCode').value = code;
+                findAdminLoanBook();
+            }
+        });
+        if (adminLoanCameraActive) {
+            adminLoanCameraControls = controls;
+            message.textContent = 'Kamera aktif. Arahkan kode ke bagian tengah gambar.';
+        } else {
+            controls.stop();
+        }
+    } catch (error) {
+        stopAdminLoanCamera();
+        message.className = 'small mb-3 text-danger';
+        message.textContent = error.message || 'Kamera tidak dapat dibuka. Periksa izin kamera dan coba lagi.';
+    }
+}
+
+function stopAdminLoanCamera() {
+    adminLoanCameraActive = false;
+    if (adminLoanCameraControls) adminLoanCameraControls.stop();
+    adminLoanCameraControls = null;
+    if (adminLoanCameraReader) adminLoanCameraReader.reset();
+    adminLoanCameraReader = null;
+    const preview = document.getElementById('adminLoanCameraPreview');
+    if (preview) {
+        preview.srcObject = null;
+        document.getElementById('adminLoanCameraContainer').classList.add('d-none');
+    }
+}
+
 function setAdminLoanDates() {
     const today = new Date();
     const dueDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
     document.getElementById('adminLoanDate').value = adminLoanDateValue(today);
     document.getElementById('adminLoanDueDate').value = adminLoanDateValue(dueDate);
 }
+window.addEventListener('pagehide', stopAdminLoanCamera);
 
 function adminLoanDateValue(value) {
     const month = String(value.getMonth() + 1).padStart(2, '0');
