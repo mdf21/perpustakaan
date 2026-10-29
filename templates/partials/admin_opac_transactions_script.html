@@ -4,8 +4,11 @@ let adminLoanSearchTimer;
 let selectedLoanMember = null;
 let selectedLoanBook = null;
 let adminLoanCameraReader;
-let adminLoanCameraControls;
 let adminLoanCameraActive = false;
+let adminLoanCameraStream;
+let adminLoanCameraDetector;
+let adminLoanCameraFallbackTimer;
+let adminLoanCameraFallbackStarted = false;
 
 document.addEventListener('DOMContentLoaded', function() {
     setAdminLoanDates();
@@ -67,6 +70,7 @@ async function startAdminLoanCamera(target) {
     stopAdminLoanCamera();
     if (typeof stopCameraScan === 'function') stopCameraScan();
     adminLoanCameraActive = true;
+    adminLoanCameraFallbackStarted = false;
     document.getElementById('adminLoanCameraContainer').classList.remove('d-none');
     message.className = 'small mb-3 text-muted';
     message.textContent = target === 'member'
@@ -86,12 +90,7 @@ async function startAdminLoanCamera(target) {
             ZXing.BarcodeFormat.ITF,
             ZXing.BarcodeFormat.CODABAR
         ];
-        const hints = new Map();
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-        hints.set(ZXing.DecodeHintType.ALSO_INVERTED, true);
-        adminLoanCameraReader = new ZXing.BrowserMultiFormatReader(hints);
-        const controls = await adminLoanCameraReader.decodeFromConstraints({
+        adminLoanCameraStream = await navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
                 facingMode: {ideal: 'environment'},
@@ -99,37 +98,127 @@ async function startAdminLoanCamera(target) {
                 height: {ideal: 1080},
                 frameRate: {ideal: 30}
             }
-        }, document.getElementById('adminLoanCameraPreview'), result => {
-            if (!result || !adminLoanCameraActive) return;
-            const code = result.getText().trim();
-            stopAdminLoanCamera();
-            if (target === 'member') {
-                document.getElementById('adminLoanMemberCode').value = code;
-                findAdminLoanMember();
-            } else {
-                document.getElementById('adminLoanBookCode').value = code;
-                findAdminLoanBook();
-            }
         });
-        if (adminLoanCameraActive) {
-            adminLoanCameraControls = controls;
-            message.textContent = 'Kamera aktif. Arahkan kode ke bagian tengah gambar.';
+        if (!adminLoanCameraActive) {
+            adminLoanCameraStream.getTracks().forEach(track => track.stop());
+            adminLoanCameraStream = null;
+            return;
+        }
+
+        const preview = document.getElementById('adminLoanCameraPreview');
+        preview.srcObject = adminLoanCameraStream;
+        await preview.play();
+        if (!adminLoanCameraActive) return;
+
+        const formatNames = new Map([
+            [ZXing.BarcodeFormat.QR_CODE, 'qr_code'],
+            [ZXing.BarcodeFormat.CODE_128, 'code_128'],
+            [ZXing.BarcodeFormat.CODE_39, 'code_39'],
+            [ZXing.BarcodeFormat.CODE_93, 'code_93'],
+            [ZXing.BarcodeFormat.EAN_13, 'ean_13'],
+            [ZXing.BarcodeFormat.EAN_8, 'ean_8'],
+            [ZXing.BarcodeFormat.UPC_A, 'upc_a'],
+            [ZXing.BarcodeFormat.UPC_E, 'upc_e'],
+            [ZXing.BarcodeFormat.ITF, 'itf'],
+            [ZXing.BarcodeFormat.CODABAR, 'codabar']
+        ]);
+        if ('BarcodeDetector' in window && typeof BarcodeDetector.getSupportedFormats === 'function') {
+            try {
+                const supportedFormats = await BarcodeDetector.getSupportedFormats();
+                const nativeFormats = formats.map(format => formatNames.get(format))
+                    .filter(format => supportedFormats.includes(format));
+                if (nativeFormats.length) {
+                    adminLoanCameraDetector = new BarcodeDetector({formats: nativeFormats});
+                }
+            } catch (error) {
+                adminLoanCameraDetector = null;
+                message.textContent = 'Deteksi kamera bawaan tidak tersedia; beralih ke pemindai cadangan.';
+            }
+        }
+
+        if (adminLoanCameraDetector) {
+            message.textContent = 'Kamera aktif. Arahkan QR atau barcode ke bagian tengah gambar.';
+            adminLoanCameraFallbackTimer = setTimeout(() => {
+                startAdminLoanZXingFallback(formats, target);
+            }, 2000);
+
+            while (adminLoanCameraActive && !adminLoanCameraFallbackStarted) {
+                try {
+                    const results = await adminLoanCameraDetector.detect(preview);
+                    if (results.length) {
+                        handleAdminLoanCameraResult(results[0].rawValue, target);
+                        return;
+                    }
+                } catch (error) {
+                    message.textContent = 'Deteksi kamera bawaan gagal; beralih ke pemindai cadangan.';
+                    startAdminLoanZXingFallback(formats, target);
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
         } else {
-            controls.stop();
+            startAdminLoanZXingFallback(formats, target);
         }
     } catch (error) {
+        if (!adminLoanCameraActive) return;
         stopAdminLoanCamera();
         message.className = 'small mb-3 text-danger';
-        message.textContent = error.message || 'Kamera tidak dapat dibuka. Periksa izin kamera dan coba lagi.';
+        message.textContent = error.message || 'Kamera tidak dapat dibuka. Pastikan izin kamera aktif, lalu coba lagi.';
+    }
+}
+
+function startAdminLoanZXingFallback(formats, target) {
+    if (!adminLoanCameraActive || adminLoanCameraFallbackStarted || !window.ZXing) return;
+    adminLoanCameraFallbackStarted = true;
+    clearTimeout(adminLoanCameraFallbackTimer);
+    adminLoanCameraFallbackTimer = null;
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    hints.set(ZXing.DecodeHintType.ALSO_INVERTED, true);
+    adminLoanCameraReader = new ZXing.BrowserMultiFormatReader(hints);
+    document.getElementById('adminLoanCameraMessage').textContent =
+        'Pemindai aktif. Dekatkan kode, pastikan fokus dan pencahayaan cukup.';
+
+    adminLoanCameraReader.decodeFromVideoElementContinuously(
+        document.getElementById('adminLoanCameraPreview'),
+        result => {
+            if (result && adminLoanCameraActive) {
+                handleAdminLoanCameraResult(result.getText(), target);
+            }
+        }
+    ).catch(error => {
+        if (!adminLoanCameraActive) return;
+        stopAdminLoanCamera();
+        const message = document.getElementById('adminLoanCameraMessage');
+        message.className = 'small mb-3 text-danger';
+        message.textContent = error.message || 'Pemindai gagal membaca video. Periksa izin kamera dan coba lagi.';
+    });
+}
+
+function handleAdminLoanCameraResult(value, target) {
+    const code = (value || '').trim();
+    if (!code || !adminLoanCameraActive) return;
+    stopAdminLoanCamera();
+    if (target === 'member') {
+        document.getElementById('adminLoanMemberCode').value = code;
+        findAdminLoanMember();
+    } else {
+        document.getElementById('adminLoanBookCode').value = code;
+        findAdminLoanBook();
     }
 }
 
 function stopAdminLoanCamera() {
     adminLoanCameraActive = false;
-    if (adminLoanCameraControls) adminLoanCameraControls.stop();
-    adminLoanCameraControls = null;
+    adminLoanCameraFallbackStarted = false;
+    clearTimeout(adminLoanCameraFallbackTimer);
+    adminLoanCameraFallbackTimer = null;
     if (adminLoanCameraReader) adminLoanCameraReader.reset();
     adminLoanCameraReader = null;
+    adminLoanCameraDetector = null;
+    if (adminLoanCameraStream) adminLoanCameraStream.getTracks().forEach(track => track.stop());
+    adminLoanCameraStream = null;
     const preview = document.getElementById('adminLoanCameraPreview');
     if (preview) {
         preview.srcObject = null;
