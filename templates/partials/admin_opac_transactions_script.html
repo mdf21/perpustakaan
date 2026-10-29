@@ -1,0 +1,254 @@
+<script>
+let adminLoanPage = 1;
+let adminLoanSearchTimer;
+let selectedLoanMember = null;
+let selectedLoanBook = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    setAdminLoanDates();
+    loadAdminLoans();
+
+    document.getElementById('adminLoanFindMember').addEventListener('click', findAdminLoanMember);
+    document.getElementById('adminLoanFindBook').addEventListener('click', findAdminLoanBook);
+    document.getElementById('adminLoanMemberCode').addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            findAdminLoanMember();
+        }
+    });
+    document.getElementById('adminLoanBookCode').addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            findAdminLoanBook();
+        }
+    });
+    document.getElementById('adminLoanMemberCode').addEventListener('input', function() {
+        selectedLoanMember = null;
+        setAdminLoanLookupMessage('adminLoanMemberResult', 'Pindai dengan scanner USB atau masukkan NIS, lalu cari anggota.');
+    });
+    document.getElementById('adminLoanBookCode').addEventListener('input', function() {
+        selectedLoanBook = null;
+        setAdminLoanLookupMessage('adminLoanBookResult', 'Pindai dengan scanner USB atau masukkan ISBN/kode buku.');
+    });
+    document.getElementById('adminLoanSearch').addEventListener('input', function() {
+        clearTimeout(adminLoanSearchTimer);
+        adminLoanSearchTimer = setTimeout(function() {
+            adminLoanPage = 1;
+            loadAdminLoans();
+        }, 300);
+    });
+    document.getElementById('adminLoanRefresh').addEventListener('click', loadAdminLoans);
+    document.getElementById('adminLoanForm').addEventListener('submit', submitAdminLoan);
+});
+
+function setAdminLoanDates() {
+    const today = new Date();
+    const dueDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
+    document.getElementById('adminLoanDate').value = adminLoanDateValue(today);
+    document.getElementById('adminLoanDueDate').value = adminLoanDateValue(dueDate);
+}
+
+function adminLoanDateValue(value) {
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${value.getFullYear()}-${month}-${day}`;
+}
+
+function setAdminLoanLookupMessage(elementId, text, success = false) {
+    const element = document.getElementById(elementId);
+    element.className = `form-text ${success ? 'text-success' : ''}`;
+    element.textContent = text;
+}
+
+async function findAdminLoanMember() {
+    const code = document.getElementById('adminLoanMemberCode').value.trim();
+    if (!code) {
+        setAdminLoanLookupMessage('adminLoanMemberResult', 'Masukkan NIS atau pindai QR kartu anggota.');
+        return;
+    }
+
+    setAdminLoanLookupMessage('adminLoanMemberResult', 'Mencari anggota...');
+    try {
+        const response = await fetch('/api/anggota/scan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code})
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Anggota tidak ditemukan.');
+        selectedLoanMember = result.anggota;
+        setAdminLoanLookupMessage(
+            'adminLoanMemberResult',
+            `Anggota: ${selectedLoanMember.nama} · ${selectedLoanMember.nis} · ${selectedLoanMember.kelas}`,
+            true
+        );
+    } catch (error) {
+        selectedLoanMember = null;
+        setAdminLoanLookupMessage('adminLoanMemberResult', error.message || 'Gagal mencari anggota.');
+    }
+}
+
+async function findAdminLoanBook() {
+    const code = document.getElementById('adminLoanBookCode').value.trim();
+    if (!code) {
+        setAdminLoanLookupMessage('adminLoanBookResult', 'Masukkan ISBN/kode atau pindai QR buku.');
+        return;
+    }
+
+    setAdminLoanLookupMessage('adminLoanBookResult', 'Mencari buku...');
+    try {
+        const response = await fetch(`/api/buku/scan/${encodeURIComponent(code)}`);
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Buku tidak ditemukan.');
+        selectedLoanBook = result.buku;
+        const stockMessage = selectedLoanBook.stok > 0
+            ? `Stok tersedia: ${selectedLoanBook.stok}.`
+            : 'Stok buku sedang habis.';
+        setAdminLoanLookupMessage(
+            'adminLoanBookResult',
+            `Buku: ${selectedLoanBook.judul}. ${stockMessage}`,
+            selectedLoanBook.stok > 0
+        );
+    } catch (error) {
+        selectedLoanBook = null;
+        setAdminLoanLookupMessage('adminLoanBookResult', error.message || 'Gagal mencari buku.');
+    }
+}
+
+async function submitAdminLoan(event) {
+    event.preventDefault();
+    const message = document.getElementById('adminLoanMessage');
+    if (!selectedLoanMember || !selectedLoanBook) {
+        message.className = 'small mt-2 text-danger';
+        message.textContent = 'Cari dan pastikan anggota serta buku terlebih dahulu.';
+        return;
+    }
+
+    const tanggalPinjam = document.getElementById('adminLoanDate').value;
+    const tanggalJatuhTempo = document.getElementById('adminLoanDueDate').value;
+    if (!tanggalPinjam || !tanggalJatuhTempo || tanggalJatuhTempo < tanggalPinjam) {
+        message.className = 'small mt-2 text-danger';
+        message.textContent = 'Tanggal jatuh tempo tidak boleh sebelum tanggal pinjam.';
+        return;
+    }
+
+    const button = document.getElementById('adminLoanSubmit');
+    button.disabled = true;
+    message.className = 'small mt-2 text-muted';
+    message.textContent = 'Menyimpan peminjaman...';
+    try {
+        const response = await fetch('/api/transaksi', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                anggota_id: selectedLoanMember.id,
+                buku_id: selectedLoanBook.id,
+                tanggal_pinjam: tanggalPinjam,
+                tanggal_kembali_seharusnya: tanggalJatuhTempo,
+                catatan: document.getElementById('adminLoanNote').value
+            })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Peminjaman gagal disimpan.');
+        message.className = 'small mt-2 text-success';
+        message.textContent = result.message;
+        document.getElementById('adminLoanForm').reset();
+        selectedLoanMember = null;
+        selectedLoanBook = null;
+        setAdminLoanLookupMessage('adminLoanMemberResult', 'Pindai dengan scanner USB atau masukkan NIS, lalu cari anggota.');
+        setAdminLoanLookupMessage('adminLoanBookResult', 'Pindai dengan scanner USB atau masukkan ISBN/kode buku.');
+        setAdminLoanDates();
+        loadAdminLoans();
+    } catch (error) {
+        message.className = 'small mt-2 text-danger';
+        message.textContent = error.message || 'Peminjaman gagal disimpan. Periksa koneksi lalu coba kembali.';
+    } finally {
+        button.disabled = false;
+        document.getElementById('adminLoanMemberCode').focus();
+    }
+}
+
+async function loadAdminLoans() {
+    const table = document.getElementById('adminLoanTable');
+    table.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Memuat transaksi...</td></tr>';
+    const search = document.getElementById('adminLoanSearch').value.trim();
+    const params = new URLSearchParams({
+        status: 'Dipinjam',
+        page: String(adminLoanPage),
+        per_page: '20',
+        search
+    });
+
+    try {
+        const response = await fetch(`/api/transaksi?${params}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Gagal memuat transaksi.');
+        if (!data.transactions.length) {
+            table.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Tidak ada buku yang sedang dipinjam.</td></tr>';
+        } else {
+            table.innerHTML = data.transactions.map(transaction => {
+                const dueDate = transaction.tanggal_kembali_seharusnya
+                    ? transaction.tanggal_kembali_seharusnya.split('-').reverse().join('-')
+                    : '';
+                const overdue = dueDate && dueDate < adminLoanDateValue(new Date());
+                const status = overdue
+                    ? '<span class="badge bg-danger">Terlambat</span>'
+                    : '<span class="badge bg-warning text-dark">Dipinjam</span>';
+                return `<tr>
+                    <td>${escapeHtml(transaction.nama_anggota)}<div class="small text-muted">${escapeHtml(transaction.nis_anggota || '')}</div></td>
+                    <td>${escapeHtml(transaction.judul_buku)}</td>
+                    <td>${escapeHtml(transaction.tanggal_kembali_seharusnya || '-')}</td>
+                    <td>${status}</td>
+                    <td><button class="btn btn-sm btn-success" type="button" onclick="returnAdminLoan(${transaction.id})"><i class="bi bi-check-circle me-1"></i>Kembali</button></td>
+                </tr>`;
+            }).join('');
+        }
+        renderAdminLoanPagination(data.page, data.pages);
+    } catch (error) {
+        table.innerHTML = `<tr><td colspan="5" class="text-center text-danger">${escapeHtml(error.message || 'Gagal memuat transaksi.')}</td></tr>`;
+        document.getElementById('adminLoanPagination').innerHTML = '';
+    }
+}
+
+function renderAdminLoanPagination(page, pages) {
+    const pagination = document.getElementById('adminLoanPagination');
+    pagination.innerHTML = '';
+    if (pages <= 1) return;
+    pagination.innerHTML = `
+        <li class="page-item ${page <= 1 ? 'disabled' : ''}">
+            <button class="page-link" type="button" ${page <= 1 ? 'disabled' : ''} onclick="changeAdminLoanPage(${page - 1})">Sebelumnya</button>
+        </li>
+        <li class="page-item disabled"><span class="page-link">${page} / ${pages}</span></li>
+        <li class="page-item ${page >= pages ? 'disabled' : ''}">
+            <button class="page-link" type="button" ${page >= pages ? 'disabled' : ''} onclick="changeAdminLoanPage(${page + 1})">Berikutnya</button>
+        </li>`;
+}
+
+function changeAdminLoanPage(page) {
+    adminLoanPage = page;
+    loadAdminLoans();
+}
+
+async function returnAdminLoan(id) {
+    if (!window.confirm('Catat buku ini sebagai sudah dikembalikan?')) return;
+    const message = document.getElementById('adminReturnMessage');
+    message.className = 'small mt-2 text-muted';
+    message.textContent = 'Mencatat pengembalian...';
+    try {
+        const response = await fetch(`/api/transaksi/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'return'})
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Pengembalian gagal dicatat.');
+        const fine = result.denda ? ` Denda keterlambatan: Rp ${result.denda.toLocaleString('id-ID')}.` : '';
+        message.className = 'small mt-2 text-success';
+        message.textContent = `${result.message}${fine}`;
+        loadAdminLoans();
+    } catch (error) {
+        message.className = 'small mt-2 text-danger';
+        message.textContent = error.message || 'Pengembalian gagal dicatat. Periksa koneksi lalu coba kembali.';
+    }
+}
+</script>

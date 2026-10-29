@@ -1,0 +1,69 @@
+<div class="card border-0 mb-4">
+    <div class="card-header bg-white border-0">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-arrow-left-right me-2 text-primary"></i>Peminjaman & Pengembalian</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-4">
+            <div class="col-lg-5">
+                <h6 class="fw-semibold">Catat Peminjaman</h6>
+                <form id="adminLoanForm">
+                    <div class="mb-3">
+                        <label for="adminLoanMemberCode" class="form-label">QR kartu anggota atau NIS</label>
+                        <div class="input-group">
+                            <input id="adminLoanMemberCode" class="form-control" autocomplete="off" placeholder="Pindai kartu atau masukkan NIS" required>
+                            <button id="adminLoanFindMember" class="btn btn-outline-primary" type="button" aria-label="Cari anggota"><i class="bi bi-search"></i></button>
+                        </div>
+                        <div id="adminLoanMemberResult" class="form-text" role="status" aria-live="polite">Pindai dengan scanner USB atau masukkan NIS, lalu cari anggota.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="adminLoanBookCode" class="form-label">QR/ISBN/kode buku</label>
+                        <div class="input-group">
+                            <input id="adminLoanBookCode" class="form-control" autocomplete="off" placeholder="Pindai kode atau masukkan ISBN" required>
+                            <button id="adminLoanFindBook" class="btn btn-outline-primary" type="button" aria-label="Cari buku"><i class="bi bi-search"></i></button>
+                        </div>
+                        <div id="adminLoanBookResult" class="form-text" role="status" aria-live="polite">Pindai dengan scanner USB atau masukkan ISBN/kode buku.</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-6 mb-3">
+                            <label for="adminLoanDate" class="form-label">Tanggal pinjam</label>
+                            <input id="adminLoanDate" class="form-control" type="date" required>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <label for="adminLoanDueDate" class="form-label">Jatuh tempo</label>
+                            <input id="adminLoanDueDate" class="form-control" type="date" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="adminLoanNote" class="form-label">Catatan (opsional)</label>
+                        <textarea id="adminLoanNote" class="form-control" rows="2"></textarea>
+                    </div>
+                    <button id="adminLoanSubmit" class="btn btn-primary" type="submit"><i class="bi bi-check2-circle me-1"></i>Simpan Peminjaman</button>
+                    <div id="adminLoanMessage" class="small mt-2" role="status" aria-live="polite"></div>
+                </form>
+            </div>
+            <div class="col-lg-7">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h6 class="fw-semibold mb-0">Buku yang masih dipinjam</h6>
+                    <div class="d-flex gap-2">
+                        <input id="adminLoanSearch" class="form-control form-control-sm" type="search" placeholder="Cari anggota atau buku" aria-label="Cari peminjaman">
+                        <button id="adminLoanRefresh" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Muat ulang peminjaman"><i class="bi bi-arrow-clockwise"></i></button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead>
+                            <tr><th>Anggota</th><th>Buku</th><th>Jatuh tempo</th><th>Status</th><th>Aksi</th></tr>
+                        </thead>
+                        <tbody id="adminLoanTable">
+                            <tr><td colspan="5" class="text-center text-muted">Memuat transaksi...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <nav aria-label="Halaman daftar peminjaman">
+                    <ul id="adminLoanPagination" class="pagination pagination-sm justify-content-center mb-0"></ul>
+                </nav>
+                <div id="adminReturnMessage" class="small mt-2" role="status" aria-live="polite"></div>
+            </div>
+        </div>
+    </div>
+</div>
