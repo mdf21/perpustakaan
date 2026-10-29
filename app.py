@@ -853,6 +853,11 @@ def delete_referensi(id):
 def opac_page():
     return render_template('opac.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
 
+@app.route('/admin/opac')
+@role_required('admin')
+def admin_opac_page():
+    return render_template('admin_opac.html', current_date=datetime.now().strftime('%d %B %Y'), user=get_current_user())
+
 @app.route('/informasi')
 def informasi_page():
     info = PerpustakaanInfo.query.first()
@@ -860,7 +865,7 @@ def informasi_page():
 
 @app.route('/kunjungan')
 def kunjungan_page():
-    return render_template('kunjungan.html', user=get_current_user())
+    return redirect(url_for('opac_page'))
 
 @app.route('/informasi-admin')
 @role_required('admin', 'petugas')
@@ -1001,6 +1006,7 @@ def kartu_anggota_print_page():
     return render_template('kartu_anggota_massal.html', anggota_list=anggota_list, info=info.to_dict() if info else {})
 
 @app.route('/api/kunjungan/scan', methods=['POST'])
+@role_required('admin')
 def catat_kunjungan():
     data = request.get_json(silent=True) or {}
     token = data.get('qr_code', '').strip()

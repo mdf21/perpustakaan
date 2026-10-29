@@ -9,11 +9,11 @@ Aplikasi pengelolaan perpustakaan sekolah berbasis Flask dan SQLite. Sistem meny
 - **Katalog buku** (`/opac`): cari buku dan lihat kategori, ketersediaan, lokasi rak, serta rekomendasi.
 - **E-book**: baca dan unduh berkas PDF yang disediakan perpustakaan.
 - **Informasi perpustakaan** (`/informasi`): lihat profil, sejarah, visi, misi, dan struktur organisasi sekolah.
-- **Absensi kunjungan** (`/kunjungan`): catat kunjungan dengan memindai QR kartu anggota.
 - **Akun anggota**: anggota dapat masuk menggunakan akun yang disiapkan petugas.
 
 ### Panel petugas dan admin
 
+- OPAC Administrator (`/admin/opac`) untuk admin: cari koleksi buku serta mencatat kunjungan anggota menggunakan QR kartu, kamera, atau NIS. Satu kunjungan per anggota per hari.
 - Dashboard dengan ringkasan koleksi, anggota, peminjaman, keterlambatan, dan denda.
 - Kelola buku, anggota, rak, dan data referensi seperti kategori, jenis buku, kelas, jurusan, DDC, dan sumber buku.
 - Proses peminjaman, perpanjangan, pengembalian, serta pembayaran denda.

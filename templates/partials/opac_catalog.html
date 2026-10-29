@@ -1,0 +1,37 @@
+<div class="card border-0 mb-4">
+    <div class="card-header bg-white border-0">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <div class="d-flex gap-2 flex-wrap">
+                <input type="text" class="form-control" id="searchOpac" placeholder="Cari judul, pengarang, ISBN..." style="max-width: 400px;">
+                <select class="form-select" id="filterKategoriOpac" style="max-width: 200px;">
+                    <option value="">Semua Kategori</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div id="opacBooks" class="row g-3 p-3">
+            <div class="col-12 text-center text-muted py-5">Memuat katalog...</div>
+        </div>
+    </div>
+    <div class="card-footer bg-white border-0">
+        <nav>
+            <ul class="pagination justify-content-center mb-0" id="paginationOpac"></ul>
+        </nav>
+    </div>
+</div>
+
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalTitle">Detail Buku</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>

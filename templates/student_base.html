@@ -45,7 +45,6 @@
                 <div class="navbar-nav ms-auto gap-md-2">
                     <a class="nav-link {% if request.endpoint == 'opac_page' %}active{% endif %}" href="/opac"><i class="bi bi-search me-1"></i>Katalog Buku</a>
                     <a class="nav-link {% if request.endpoint == 'informasi_page' %}active{% endif %}" href="/informasi"><i class="bi bi-info-circle me-1"></i>Informasi</a>
-                    <a class="nav-link {% if request.endpoint == 'kunjungan_page' %}active{% endif %}" href="/kunjungan"><i class="bi bi-qr-code-scan me-1"></i>Absensi Kunjungan</a>
                 </div>
                 {% if user %}
                 <div class="d-flex flex-wrap align-items-center gap-2 ms-md-3 py-2 py-md-0">

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}OPAC Administrator - Perpustakaan{% endblock %}
+{% block extra_css %}
+<style>
+    .book-cover-frame { width: 100%; aspect-ratio: 3 / 4; max-height: 250px; display: grid; place-items: center; overflow: hidden; background: #e9efec; }
+    .book-cover { width: 100%; height: 100%; object-fit: contain; }
+    .book-cover-placeholder { color: #71847b; font-size: 2rem; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-1 fw-bold">OPAC Administrator</h2>
+        <p class="text-muted mb-0">Cari katalog dan catat kunjungan anggota perpustakaan.</p>
+    </div>
+</div>
+
+<div class="card border-0 mb-4">
+    <div class="card-header bg-white border-0">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-qr-code-scan me-2 text-success"></i>Absensi Kunjungan Anggota</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">Pindai QR pada kartu anggota atau masukkan NIS. Setiap anggota hanya dapat dicatat satu kali per hari.</p>
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <form id="scanForm">
+                    <label for="qrCode" class="form-label fw-semibold">Pindai QR kartu anggota</label>
+                    <div class="input-group">
+                        <input id="qrCode" class="form-control" autocomplete="off" placeholder="Gunakan pemindai QR USB" required>
+                        <button class="btn btn-primary" type="submit" aria-label="Catat kunjungan dari QR"><i class="bi bi-arrow-return-left"></i></button>
+                    </div>
+                </form>
+                <div class="d-flex gap-2 mt-3">
+                    <button id="cameraButton" class="btn btn-outline-success" type="button"><i class="bi bi-camera me-1"></i>Pindai dengan Kamera</button>
+                    <button id="stopCamera" class="btn btn-outline-secondary d-none" type="button" aria-label="Hentikan kamera"><i class="bi bi-stop-fill"></i></button>
+                </div>
+                <video id="cameraPreview" class="w-100 mt-3 d-none" playsinline></video>
+            </div>
+            <div class="col-lg-6">
+                <form id="manualForm">
+                    <label for="memberCode" class="form-label fw-semibold">Masukkan NIS anggota</label>
+                    <div class="input-group">
+                        <input id="memberCode" class="form-control" autocomplete="off" placeholder="NIS pada kartu anggota" required>
+                        <button class="btn btn-primary" type="submit" aria-label="Catat kunjungan dengan NIS"><i class="bi bi-arrow-return-left"></i></button>
+                    </div>
+                </form>
+                <div id="scanMessage" class="mt-3" role="status" aria-live="polite"></div>
+                <div id="attendanceResult" class="alert alert-success mt-3 d-none mb-0" role="status"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h3 class="h5 fw-bold mb-3"><i class="bi bi-search me-2"></i>Katalog Buku</h3>
+{% include "partials/opac_catalog.html" %}
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/zxing.min.js') }}"></script>
+{% include "partials/opac_catalog_script.html" %}
+<script>
+const scanForm = document.getElementById('scanForm');
+const qrInput = document.getElementById('qrCode');
+const manualForm = document.getElementById('manualForm');
+const memberCodeInput = document.getElementById('memberCode');
+const message = document.getElementById('scanMessage');
+const cameraPreview = document.getElementById('cameraPreview');
+const cameraButton = document.getElementById('cameraButton');
+const stopCamera = document.getElementById('stopCamera');
+const attendanceResult = document.getElementById('attendanceResult');
+let scanning = false;
+let cameraReader;
+let cameraControls;
+
+scanForm.addEventListener('submit', function(event) {
+    event.preventDefault();
+    recordAttendance({qr_code: qrInput.value.trim()}, qrInput);
+});
+
+manualForm.addEventListener('submit', function(event) {
+    event.preventDefault();
+    recordAttendance({nis: memberCodeInput.value.trim()}, memberCodeInput);
+});
+
+async function recordAttendance(code, input) {
+    message.className = 'mt-3 text-secondary';
+    message.textContent = 'Mencatat kunjungan...';
+    attendanceResult.classList.add('d-none');
+    try {
+        const response = await fetch('/api/kunjungan/scan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(code)
+        });
+        const result = await response.json();
+        message.className = `mt-3 ${result.success ? 'text-success' : 'text-danger'}`;
+        message.textContent = result.message;
+        if (result.success) {
+            const attendee = result.anggota;
+            attendanceResult.textContent = `${attendee.nama} · ${attendee.nis} · ${attendee.kelas} · ${result.waktu}`;
+            attendanceResult.classList.remove('d-none');
+            input.value = '';
+        }
+    } catch (error) {
+        message.className = 'mt-3 text-danger';
+        message.textContent = 'Kunjungan gagal dicatat. Periksa koneksi lalu coba kembali.';
+    }
+    input.focus();
+}
+
+cameraButton.addEventListener('click', async function() {
+    if (!window.isSecureContext) {
+        message.className = 'mt-3 text-danger';
+        message.textContent = 'Kamera memerlukan HTTPS dengan sertifikat valid atau localhost.';
+        return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.ZXing) {
+        message.className = 'mt-3 text-danger';
+        message.textContent = 'Pemindai kamera tidak tersedia. Gunakan pemindai QR USB atau masukkan NIS.';
+        return;
+    }
+
+    try {
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+        cameraReader = new ZXing.BrowserMultiFormatReader(hints);
+        cameraPreview.classList.remove('d-none');
+        stopCamera.classList.remove('d-none');
+        cameraButton.disabled = true;
+        scanning = true;
+        message.className = 'mt-3 text-secondary';
+        message.textContent = 'Arahkan kamera ke QR kartu anggota.';
+
+        const controls = await cameraReader.decodeFromVideoDevice(undefined, cameraPreview, result => {
+            if (result && scanning) {
+                qrInput.value = result.getText();
+                stopCameraScan();
+                scanForm.requestSubmit();
+            }
+        });
+        if (scanning) cameraControls = controls;
+        else controls.stop();
+    } catch (error) {
+        message.className = 'mt-3 text-danger';
+        message.textContent = error.message || 'Kamera tidak dapat dibuka. Pastikan izin kamera aktif.';
+        stopCameraScan();
+    }
+});
+
+stopCamera.addEventListener('click', stopCameraScan);
+function stopCameraScan() {
+    scanning = false;
+    if (cameraControls) cameraControls.stop();
+    cameraControls = null;
+    if (cameraReader) cameraReader.reset();
+    cameraReader = null;
+    cameraPreview.srcObject = null;
+    cameraPreview.classList.add('d-none');
+    stopCamera.classList.add('d-none');
+    cameraButton.disabled = false;
+}
+window.addEventListener('pagehide', stopCameraScan);
+</script>
+{% endblock %}
